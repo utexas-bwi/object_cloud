@@ -16,7 +16,7 @@
 #include <tmc_yolo2_ros/Detection.h>
 
 #include <knowledge_representation/LongTermMemoryConduit.h>
-#include "../include/YoloCloud.h"
+#include <villa_yolocloud/YoloCloud.h>
 #include <villa_yolocloud/DetectedObject.h>
 #include <villa_yolocloud/GetShelfObjects.h>
 #include <villa_yolocloud/GetEntities.h>
@@ -101,6 +101,7 @@ public:
 
         int eid = ltmc.add_entity();
         ltmc.add_entity_attribute(eid, "is_a", cid);
+        ltmc.add_entity_attribute(eid, "sensed", true);
         entity_id_to_point.insert({eid, cloud_idx});
     }
 
