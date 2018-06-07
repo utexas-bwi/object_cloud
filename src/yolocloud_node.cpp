@@ -35,17 +35,28 @@ private:
     std::unordered_map<int, int> entity_id_to_point;
     knowledge_rep::LongTermMemoryConduit ltmc; // Knowledge base
 
+
     ros::Publisher viz_pub;
 
 public:
+    bool received_first_message = false;
     YoloCloudNode(ros::NodeHandle node)
         : ltmc("127.0.0.1", 33060, "root", "", "villa_krr") {
         viz_pub = node.advertise<visualization_msgs::MarkerArray>("yoloobjects/markers", 1, true);
+        // NOTE: We assume there's only one YoloCloud, so this will blow away anything that is sensed
+        ltmc.remove_concept_references("sensed");
+        ltmc.remove_concept_references("scanned");
+    }
+
+    ~YoloCloudNode() {
+        ltmc.remove_concept_references("sensed");
+        ltmc.remove_concept_references("scanned");
     }
 
     void data_callback(const sensor_msgs::Image::ConstPtr &rgb_image,
                        const sensor_msgs::Image::ConstPtr &depth_image,
                        const tmc_yolo2_ros::Detections::ConstPtr &yolo_detections) {
+        received_first_message = true;
         if (yolo_detections->detections.size() == 0) {
             return;
         }
@@ -101,7 +112,7 @@ public:
 
         int eid = ltmc.add_entity();
         ltmc.add_entity_attribute(eid, "is_a", cid);
-        ltmc.add_entity_attribute(eid, "sensed", true);
+        ltmc.add_entity_attribute(eid, "is_a", ltmc.get_concept("sensed"));
         entity_id_to_point.insert({eid, cloud_idx});
     }
 
@@ -109,12 +120,20 @@ public:
     bool get_entities(villa_yolocloud::GetEntities::Request &req, villa_yolocloud::GetEntities::Response &res) {
         std::vector<geometry_msgs::Point> map_locations;
         for (int eid : req.entity_ids) {
-            pcl::PointXYZL point = shelf_manager.objects->points[entity_id_to_point.at(eid)];
-
+            auto points = shelf_manager.objects->points;
             geometry_msgs::Point p;
-            p.x = point.x;
-            p.y = point.y;
-            p.z = point.z;
+            if (entity_id_to_point.count(eid) == 0) {
+                ltmc.remove_entity_attribute(eid, "sensed");
+                p.x = NAN;
+                p.y = NAN;
+                p.z = NAN;
+            } else {
+                pcl::PointXYZL point = shelf_manager.objects->points[entity_id_to_point.at(eid)];
+                p.x = point.x;
+                p.y = point.y;
+                p.z = point.z;
+            }
+
             map_locations.push_back(p);
         }
 
@@ -200,20 +219,25 @@ int main (int argc, char **argv) {
     ros::init(argc, argv, "yolocloud_node");
     ros::NodeHandle n;
 
-    YoloCloudNode shelf(n);
+    YoloCloudNode yc_node(n);
 
     message_filters::Subscriber<sensor_msgs::Image> image_sub(n, "/hsrb/head_rgbd_sensor/rgb/image_rect_color", 10);
     message_filters::Subscriber<sensor_msgs::Image> depth_sub(n, "/hsrb/head_rgbd_sensor/depth_registered/image", 10);
     message_filters::Subscriber<tmc_yolo2_ros::Detections> yolo_sub(n, "/yolo2_node/detections", 10);
     message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(10), image_sub, depth_sub, yolo_sub);
-    sync.registerCallback(boost::bind(&YoloCloudNode::data_callback, &shelf, _1, _2, _3));
+    sync.registerCallback(boost::bind(&YoloCloudNode::data_callback, &yc_node, _1, _2, _3));
+
 
     ROS_INFO("Started. Waiting for inputs.");
+    while (ros::ok() && !yc_node.received_first_message) {
+        ROS_WARN_THROTTLE(2, "Waiting for image, depth and detections messages...");
+        ros::spinOnce();
+    }
 
-    ros::ServiceServer getShelfObjects = n.advertiseService("getShelfObjects", &YoloCloudNode::get_shelf_objects, &shelf);
-    ros::ServiceServer getEntities = n.advertiseService("getEntities", &YoloCloudNode::get_entities, &shelf);
+    ros::ServiceServer getShelfObjects = n.advertiseService("getShelfObjects", &YoloCloudNode::get_shelf_objects,
+                                                            &yc_node);
+    ros::ServiceServer getEntities = n.advertiseService("getEntities", &YoloCloudNode::get_entities, &yc_node);
 
     ros::spin();
-
     return 0;
 }

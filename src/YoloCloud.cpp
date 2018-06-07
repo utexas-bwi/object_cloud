@@ -17,10 +17,10 @@ int YoloCloud::addObject(const ImageBoundingBox &bbox,
         const Eigen::Affine3f &camToMap) {
     if (bbox.y + bbox.height > rgb_image.rows
         || bbox.x + bbox.width > rgb_image.cols) {
-        std::cout << bbox.x << std::endl;
-        std::cout << bbox.y << std::endl;
-        std::cout << bbox.width << std::endl;
-        std::cout << bbox.height << std::endl;
+        //std::cout << bbox.x << std::endl;
+        //std::cout << bbox.y << std::endl;
+        //std::cout << bbox.width << std::endl;
+        //std::cout << bbox.height << std::endl;
         //throw std::runtime_error("Invalid bbox");
         return -1;
     }
@@ -103,16 +103,18 @@ int YoloCloud::addObject(const ImageBoundingBox &bbox,
     point.z = world(2);
     point.label = id;
 
-    // Check if point already exists (or close enough one already exists)
-    pcl::KdTree<pcl::PointXYZL>::Ptr tree(new pcl::KdTreeFLANN<pcl::PointXYZL>);
-tree->setInputCloud(objects);
-    std::vector<int> nn_indices(1);
-    std::vector<float> nn_dists(1);
-    if (objects->size() > 0
-        && tree->nearestKSearch(point, 1, nn_indices, nn_dists)) {
-        if (objects->points[nn_indices[0]].label == point.label && nn_dists[0] <= NEIGHBOR_THRESH) {
-            // We don't want to add this as it is probably a duplicate
-            return -1;
+    if (!objects->points.empty()) {
+        // Check if point already exists (or close enough one already exists)
+        pcl::KdTree<pcl::PointXYZL>::Ptr tree(new pcl::KdTreeFLANN<pcl::PointXYZL>);
+        tree->setInputCloud(objects);
+        std::vector<int> nn_indices(1);
+        std::vector<float> nn_dists(1);
+        if (objects->size() > 0
+            && tree->nearestKSearch(point, 1, nn_indices, nn_dists)) {
+            if (objects->points[nn_indices[0]].label == point.label && nn_dists[0] <= NEIGHBOR_THRESH) {
+                // We don't want to add this as it is probably a duplicate
+                return -1;
+            }
         }
     }
 
