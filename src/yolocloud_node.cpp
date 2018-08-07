@@ -16,6 +16,9 @@
 #include <tmc_yolo2_ros/Detection.h>
 
 #include <knowledge_representation/LongTermMemoryConduit.h>
+#include <knowledge_representation/convenience.h>
+#include <knowledge_representation/Concept.h>
+#include <knowledge_representation/Entity.h>
 #include <villa_yolocloud/YoloCloud.h>
 #include <villa_yolocloud/DetectedObject.h>
 #include <villa_yolocloud/GetShelfObjects.h>
@@ -41,7 +44,7 @@ private:
 public:
     bool received_first_message = false;
     YoloCloudNode(ros::NodeHandle node)
-        : ltmc("127.0.0.1", 33060, "root", "", "villa_krr") {
+        : ltmc(knowledge_rep::get_default_ltmc()) {
         viz_pub = node.advertise<visualization_msgs::MarkerArray>("yoloobjects/markers", 1, true);
         // NOTE: We assume there's only one YoloCloud, so this will blow away anything that is sensed
         ltmc.remove_concept_references("sensed");
@@ -108,12 +111,11 @@ public:
 
     void add_to_ltmc(int cloud_idx) {
         std::string label = shelf_manager.labels.at(shelf_manager.objects->points[cloud_idx].label);
-        int cid = ltmc.get_concept(label);
-
-        int eid = ltmc.add_entity();
-        ltmc.add_entity_attribute(eid, "is_a", cid);
-        ltmc.add_entity_attribute(eid, "is_a", ltmc.get_concept("sensed"));
-        entity_id_to_point.insert({eid, cloud_idx});
+        auto concept = ltmc.get_concept(label);
+        auto entity = concept.create_instance();
+        auto sensed = ltmc.get_concept("sensed");
+        entity.make_instance_of(sensed);
+        entity_id_to_point.insert({entity.entity_id, cloud_idx});
     }
 
 
@@ -123,7 +125,8 @@ public:
             auto points = shelf_manager.objects->points;
             geometry_msgs::Point p;
             if (entity_id_to_point.count(eid) == 0) {
-                ltmc.remove_entity_attribute(eid, "sensed");
+                knowledge_rep::Entity entity = {eid, ltmc};
+                entity.remove_attribute("sensed");
                 p.x = NAN;
                 p.y = NAN;
                 p.z = NAN;
