@@ -19,6 +19,7 @@
 #include <knowledge_representation/convenience.h>
 #include <knowledge_representation/Concept.h>
 #include <knowledge_representation/Entity.h>
+#include <knowledge_representation/Instance.h>
 #include <villa_yolocloud/YoloCloud.h>
 #include <villa_yolocloud/DetectedObject.h>
 #include <villa_yolocloud/GetShelfObjects.h>
