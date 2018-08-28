@@ -59,6 +59,7 @@ int YoloCloud::addObject(const ImageBoundingBox &bbox,
     waitKey(0);
 #endif
 
+    // TODO: Use something better than the average. Grab biggest peak, or verify depth is unimodal first
     float depth = 0.;
     int count = 0;
     for (size_t y = bbox.y; y < bbox.y + bbox.height; y++) {
@@ -109,9 +110,10 @@ int YoloCloud::addObject(const ImageBoundingBox &bbox,
         tree->setInputCloud(objects);
         std::vector<int> nn_indices(1);
         std::vector<float> nn_dists(1);
-        if (objects->size() > 0
+        if (!objects->empty()
             && tree->nearestKSearch(point, 1, nn_indices, nn_dists)) {
             if (objects->points[nn_indices[0]].label == point.label && nn_dists[0] <= NEIGHBOR_THRESH) {
+              // TODO: Average with neighbors
                 // We don't want to add this as it is probably a duplicate
                 return -1;
             }

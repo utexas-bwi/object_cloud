@@ -48,13 +48,13 @@ public:
         : ltmc(knowledge_rep::get_default_ltmc()) {
         viz_pub = node.advertise<visualization_msgs::MarkerArray>("yoloobjects/markers", 1, true);
         // NOTE: We assume there's only one YoloCloud, so this will blow away anything that is sensed
-        ltmc.remove_concept_references("sensed");
-        ltmc.remove_concept_references("scanned");
+        ltmc.get_concept("sensed").remove_instances();
+        ltmc.get_concept("scanned").remove_references();
     }
 
     ~YoloCloudNode() {
-        ltmc.remove_concept_references("sensed");
-        ltmc.remove_concept_references("scanned");
+        ltmc.get_concept("sensed").remove_instances();
+        ltmc.get_concept("scanned").remove_references();
     }
 
     void data_callback(const sensor_msgs::Image::ConstPtr &rgb_image,
