@@ -61,7 +61,7 @@ public:
                        const sensor_msgs::Image::ConstPtr &depth_image,
                        const tmc_yolo2_ros::Detections::ConstPtr &yolo_detections) {
         received_first_message = true;
-        if (yolo_detections->detections.size() == 0) {
+        if (yolo_detections->detections.empty()) {
             return;
         }
 
@@ -77,7 +77,7 @@ public:
         try {
             listener.waitForTransform("map", "head_rgbd_sensor_link", rgb_image->header.stamp, ros::Duration(0.1));
             listener.lookupTransform("map", "head_rgbd_sensor_link", rgb_image->header.stamp, transform);
-        } catch (tf::TransformException ex){
+        } catch (tf::TransformException &ex){
             ROS_ERROR("%s",ex.what());
             return;
         }
@@ -125,6 +125,7 @@ public:
         for (int eid : req.entity_ids) {
             auto points = shelf_manager.objects->points;
             geometry_msgs::Point p;
+            // Requested an ID that's not in the cloud. Return NANs
             if (entity_id_to_point.count(eid) == 0) {
                 knowledge_rep::Entity entity = {eid, ltmc};
                 entity.remove_attribute("sensed");
