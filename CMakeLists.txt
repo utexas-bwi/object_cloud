@@ -15,8 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
     message_generation
     message_filters
     tf_conversions
-    tmc_yolo2_ros
-    knowledge_representation
+    darknet_ros
 )
 
 find_package(Eigen3 REQUIRED)
