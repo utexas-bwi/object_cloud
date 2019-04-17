@@ -1,7 +1,30 @@
 cmake_minimum_required(VERSION 3.0)
 project(villa_yolocloud)
 
+set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_C_FLAGS_RELEASE "-Ofast -DNDEBUG")
+set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -DNDEBUG")
 add_compile_options(-std=c++11)
+
+if(DEFINED ENV{GPU_ENABLED})
+  set(USE_GPU true)
+else()
+  set(USE_GPU false)
+endif()
+
+if(DEFINED ENV{CUDNN_ENABLED})
+  set(USE_CUDNN true)
+else()
+  set(USE_CUDNN false)
+endif()
+
+if(USE_GPU)
+  add_definitions(-DGPU)
+  find_package(CUDA REQUIRED)
+  if(USE_CUDNN)
+    add_definitions(-DCUDNN)
+  endif()
+endif()
 
 find_package(catkin REQUIRED COMPONENTS
     roscpp
@@ -14,12 +37,17 @@ find_package(catkin REQUIRED COMPONENTS
     std_srvs
     message_generation
     message_filters
-    tf_conversions
-    darknet_ros
+    cv_bridge
+    tf2
+    tf2_eigen
+    image_transport
+    knowledge_representation
+    villa_darknet
 )
 
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED COMPONENTS common)
+find_package(OpenCV REQUIRED)
 
 add_message_files(
     FILES
@@ -51,12 +79,20 @@ catkin_package(
 include_directories(
     include
     ${catkin_INCLUDE_DIRS}
+    ${OpenCV_INCLUDE_DIRS}
     ${Eigen3_INCLUDE_DIRS}
 )
 
-add_executable(yolocloud_node src/yolocloud_node.cpp src/YoloCloud.cpp)
+if(USE_GPU)
+  include_directories(
+    SYSTEM ${CUDA_INCLUDE_DIRS}
+    /usr/local/cuda/targets/x86_64-linux/include
+  )
+endif()
+
+add_executable(yolocloud_node src/yolocloud_node.cpp src/YoloCloud.cpp src/YoloModel.cpp)
 add_dependencies(yolocloud_node ${villa_yolocloud_EXPORTED_TARGETS})
-target_link_libraries(yolocloud_node ${catkin_LIBRARIES} ${PCL_LIBRARIES})
+target_link_libraries(yolocloud_node ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${PCL_LIBRARIES})
 
 install(PROGRAMS
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}

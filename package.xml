@@ -60,7 +60,7 @@
   <depend>visualization_msgs</depend>
   <depend>message_generation</depend>
   <depend>message_runtime</depend>
-  <depend>tmc_yolo2_ros</depend>
+  <depend>villa_darknet</depend>
   <depend>knowledge_representation</depend>
 
   <!-- The export tag contains other, unspecified, tags -->
