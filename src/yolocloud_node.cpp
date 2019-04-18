@@ -227,10 +227,18 @@ public:
 int main (int argc, char **argv) {
     ROS_INFO("Initializing yolocloud node...");
     ros::init(argc, argv, "yolocloud_node");
-    ros::NodeHandle n;
+    ros::NodeHandle n("~");
+
+    // Network config/weights
+    std::string labels_file;
+    std::string network_cfg;
+    std::string weights_file;
+    n.getParam("yolo_labels", labels_file);
+    n.getParam("yolo_cfg", network_cfg);
+    n.getParam("yolo_weights", weights_file);
 
     YoloCloudNode yc_node(n);
-    yc_node.model.load("/home/bwilab/Desktop/train/darknet_data/config/model.names", "/home/bwilab/Desktop/train/darknet_data/config/model.cfg", "/home/bwilab/Desktop/train/darknet_data/backup/model.backup");
+    yc_node.model.load(labels_file, network_cfg, weights_file);
 
     image_transport::SubscriberFilter image_sub(yc_node.it,
                                                 "/hsrb/head_rgbd_sensor/rgb/image_rect_color",
