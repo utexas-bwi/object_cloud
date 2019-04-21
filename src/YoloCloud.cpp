@@ -31,6 +31,10 @@ int YoloCloud::addObject(const ImageBoundingBox &bbox,
     Mat mask; // segmentation result (4 possible values)
     Mat bgModel, fgModel; // the models (internally used)
 
+    // TODO: GrabCut makes this go at like 5fps
+    // So just take the depth at the center
+    // Otherwise, a segmentation network would be about as fast
+/*
     // GrabCut segmentation
     grabCut(rgb_image,    // input image
                 mask,   // segmentation result
@@ -82,6 +86,12 @@ int YoloCloud::addObject(const ImageBoundingBox &bbox,
     float depthCenter = depth_image.at<float>(bbox.y + bbox.height/2., bbox.x + bbox.width/2.);
     if (depthCenter != 0 && !isnan(depthCenter) && depthCenter < depth) {
         depth = depthCenter;
+    }
+*/
+
+    float depth = depth_image.at<float>(bbox.y + bbox.height/2., bbox.x + bbox.width/2.);
+    if (depth == 0 || isnan(depth)) {
+        return -1;
     }
 
     // If the label does not yet exist, add it
