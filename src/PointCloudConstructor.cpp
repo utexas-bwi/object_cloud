@@ -11,7 +11,7 @@ using namespace Eigen;
 octomap::Pointcloud PointCloudConstructor::construct(const Matrix3f &ir_intrinsics,
                                                      const Mat &depthImage,
                                                      const Eigen::Affine3f &transform) {
-    Matrix<float, 4, Dynamic> points(4, depthImage.rows * depthImage.cols);
+    Matrix<float, 3, Dynamic> points(3, depthImage.rows * depthImage.cols);
 
     float sx = ir_intrinsics(0, 0);
     float sy = ir_intrinsics(1, 1);
@@ -32,20 +32,19 @@ octomap::Pointcloud PointCloudConstructor::construct(const Matrix3f &ir_intrinsi
 
             // Analytic solution to intrinsics^-1(point) * depth
             // Eigen is column major order, so *4 is column size
-            pointsData[valid_points*4 + 0] =
+            pointsData[valid_points*3 + 0] =
                     (x - x_c) * (1.0 / sx) * row[x];
-            pointsData[valid_points*4 + 1] =
+            pointsData[valid_points*3 + 1] =
                     (y - y_c) * (1.0 / sy) * row[x];
 
-            pointsData[valid_points*4 + 2] = row[x];
-            pointsData[valid_points*4 + 3] = 1.0f;
+            pointsData[valid_points*3 + 2] = row[x];
 
             valid_points++;
         }
     }
 
     // Transform points
-    Matrix<float, 4, Dynamic> pointsTransformed = transform * points;
+    Matrix<float, 3, Dynamic> pointsTransformed = transform * points;
 
     octomap::Pointcloud cloud;
     cloud.reserve(valid_points);
@@ -55,11 +54,11 @@ octomap::Pointcloud PointCloudConstructor::construct(const Matrix3f &ir_intrinsi
 
     // Fill in octomap point cloud
     for (int i = 0; i < valid_points; ++i) {
-        float tfx = pointsTransformedData[i*4 + 0] / pointsTransformedData[i*4 + 3];
-        float tfy = pointsTransformedData[i*4 + 1] / pointsTransformedData[i*4 + 3];
-        float tfz = pointsTransformedData[i*4 + 2] / pointsTransformedData[i*4 + 3];
+        float x = pointsTransformedData[i*3 + 0];
+        float y = pointsTransformedData[i*3 + 1];
+        float z = pointsTransformedData[i*3 + 2];
 
-        cloud.push_back(octomap::point3d(tfx, tfy, tfz));
+        cloud.push_back(octomap::point3d(x, y, z));
     }
 
     return cloud;
