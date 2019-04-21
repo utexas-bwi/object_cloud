@@ -195,7 +195,7 @@ public:
         std::cout << max << std::endl;
         std::cout << "=====================" << std::endl;
 
-        std::vector<octomap::point3d> pts;
+        std::vector<Eigen::Vector3f> pts;
         float minZ = std::numeric_limits<float>::max();
         for (octomap::OcTree::leaf_bbx_iterator iter = octree.begin_leafs_bbx(min, max),
                  end=octree.end_leafs_bbx(); iter != end; ++iter) {
@@ -205,40 +205,25 @@ public:
             }
         }
 
-        // Remove z threshold
-        std::cout << "PREV:" << minZ << " " << pts.size() << std::endl;
-        std::vector<octomap::point3d> ptsFiltered;
+        // Filter out z's that are too low (e.g. if part of the table is captured)
+        std::vector<Eigen::Vector3f> ptsFiltered;
         for (const auto &pt : pts) {
-            if (pt.z() > minZ + 0.05) {
+            if (pt(2) > minZ + 0.05) {
                 ptsFiltered.push_back(pt);
             }
         }
         pts = ptsFiltered;
-        std::cout << "POST:" << pts.size() << std::endl;
 
         // Prepare batch points to check
-        Eigen::Matrix<float, 4, Eigen::Dynamic> candidatePoints(4, pts.size());
+        Eigen::Matrix<float, 3, Eigen::Dynamic> candidatePoints(3, pts.size());
         for (int i = 0; i < pts.size(); ++i) {
-            candidatePoints.col(i) = Eigen::Vector4f(pts[i].x(), pts[i].y(), pts[i].z(), 1.0f);
+            candidatePoints.col(i) = pts[i];
         }
 
         // Project batch
         Eigen::Affine3f mapToCam = camToMap.inverse().cast<float>();
-        Eigen::Matrix<float, 4, Eigen::Dynamic> inCam = mapToCam * candidatePoints;
-        //inCam.array().rowwise() /= inCam.row(3).array();
-        for (int i = 0; i < pts.size(); ++i) {
-            inCam(0, i) /= inCam(3, i);
-            inCam(1, i) /= inCam(3, i);
-            inCam(2, i) /= inCam(3, i);
-            inCam(3, i) /= inCam(3, i);
-        }
-        Eigen::Matrix<float, 3, Eigen::Dynamic> imagePoints = ir_intrinsics * inCam.block(0, 0, 3, pts.size());
-        //imagePoints.array().rowwise() /= imagePoints.row(2).array();
-        for (int i = 0; i < pts.size(); ++i) {
-            imagePoints(0, i) /= imagePoints(2, i);
-            imagePoints(1, i) /= imagePoints(2, i);
-            imagePoints(2, i) /= imagePoints(2, i);
-        }
+        Eigen::Matrix<float, 3, Eigen::Dynamic> imagePoints = ir_intrinsics * mapToCam * candidatePoints;
+        imagePoints.array().rowwise() /= imagePoints.row(2).array();
 
         float min_x = std::numeric_limits<float>::max();
         float min_y = std::numeric_limits<float>::max();
