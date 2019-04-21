@@ -77,7 +77,7 @@ public:
         viz_pub = node.advertise<visualization_msgs::MarkerArray>("yolocloud/markers", 1, true);
         cloud_pub = node.advertise<octomap_msgs::Octomap>("yolocloud/cloud", 1);
         bbox_pub = node.advertise<visualization_msgs::Marker>("yolocloud/box", 1, true);
-        //cloudPCLPub = node.advertise<pcl::PointCloud<pcl::PointXYZ>>("yolocloud/cloudpcl", 1);
+        cloudPCLPub = node.advertise<pcl::PointCloud<pcl::PointXYZ>>("yolocloud/cloudpcl", 1);
 #endif
 
         // NOTE: We assume there's only one YoloCloud, so this will blow away anything that is sensed
@@ -102,9 +102,10 @@ public:
         }
 
 
+        // Beware! head_rgbd_sensor_rgb_frame is different from head_rgbd_sensor_link
         geometry_msgs::TransformStamped transform;
         try {
-            transform = tfBuffer.lookupTransform("map", "head_rgbd_sensor_link", rgb_image->header.stamp, ros::Duration(0.01));
+            transform = tfBuffer.lookupTransform("map", rgb_image->header.frame_id, rgb_image->header.stamp, ros::Duration(0.01));
         } catch (tf2::TransformException &ex){
             ROS_ERROR("%s", ex.what());
             return;
@@ -163,8 +164,15 @@ public:
         // Use depthMasked to construct a ROI Point Cloud for use with Octomap
         // Without this, Octomap takes forever
         Eigen::Matrix3f ir_intrinsics;
-        ir_intrinsics << 569.8283037644665, 0, 322.7751444492567, 0, 570.4683437626238, 240.5925536668499, 0, 0, 1;
+        ir_intrinsics << 535.2900990271, 0, 320.0, 0, 535.2900990271, 240.0, 0, 0, 1;
         octomap::Pointcloud cloud = PointCloudConstructor::construct(ir_intrinsics, depthMasked, camToMap.cast<float>());
+
+        pcl::PointCloud<pcl::PointXYZ> pclcloud;
+        pclcloud.header.frame_id = "map";
+        for (const auto &pt : cloud) {
+            pclcloud.points.emplace_back(pt.x(), pt.y(), pt.z());
+        }
+        cloudPCLPub.publish(pclcloud);
 
         // Insert ROI PointCloud into Octree
         octree.insertPointCloud(cloud,
