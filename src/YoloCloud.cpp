@@ -11,10 +11,10 @@ const float NEIGHBOR_THRESH = 0.1;
  * Adds object
  * Returns index in point cloud or -1 if not added
  */
-int YoloCloud::addObject(const ImageBoundingBox &bbox,
-        const Mat &rgb_image,
-        const Mat &depth_image,
-        const Eigen::Affine3f &camToMap) {
+std::pair<int, pcl::PointXYZL> YoloCloud::addObject(const ImageBoundingBox &bbox,
+                                                    const Mat &rgb_image,
+                                                    const Mat &depth_image,
+                                                    const Eigen::Affine3f &camToMap) {
     if (bbox.y + bbox.height > rgb_image.rows
         || bbox.x + bbox.width > rgb_image.cols) {
         //std::cout << bbox.x << std::endl;
@@ -22,7 +22,7 @@ int YoloCloud::addObject(const ImageBoundingBox &bbox,
         //std::cout << bbox.width << std::endl;
         //std::cout << bbox.height << std::endl;
         //throw std::runtime_error("Invalid bbox");
-        return -1;
+        return std::make_pair(-1, pcl::PointXYZL());
     }
 
     // define bounding rectangle
@@ -91,7 +91,7 @@ int YoloCloud::addObject(const ImageBoundingBox &bbox,
 
     float depth = depth_image.at<float>(bbox.y + bbox.height/2., bbox.x + bbox.width/2.);
     if (depth == 0 || isnan(depth)) {
-        return -1;
+        return std::make_pair(-1, pcl::PointXYZL());
     }
 
     // If the label does not yet exist, add it
@@ -129,13 +129,13 @@ int YoloCloud::addObject(const ImageBoundingBox &bbox,
             && tree->nearestKSearch(point, 1, nn_indices, nn_dists)) {
             if (objects->points[nn_indices[0]].label == point.label && nn_dists[0] <= NEIGHBOR_THRESH) {
                 // We don't want to add this as it is probably a duplicate
-                return -1;
+                return std::make_pair(-1, objects->points[nn_indices[0]]);
             }
         }
     }
 
     objects->push_back(point);
-    return objects->size() - 1;
+    return std::make_pair(objects->size() - 1, point);
 }
 
 pcl::PointCloud<pcl::PointXYZL>::Ptr YoloCloud::sliceCloud(float x_min, float x_max,

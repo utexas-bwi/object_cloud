@@ -38,7 +38,7 @@ public:
         : objects(new pcl::PointCloud<pcl::PointXYZL>) {
     }
 
-    int addObject(const ImageBoundingBox &bbox, const cv::Mat &rgb_image, const cv::Mat &depth_image, const Eigen::Affine3f &camToMap);
+    std::pair<int, pcl::PointXYZL> addObject(const ImageBoundingBox &bbox, const cv::Mat &rgb_image, const cv::Mat &depth_image, const Eigen::Affine3f &camToMap);
 
     pcl::PointCloud<pcl::PointXYZL>::Ptr sliceCloud(float x_min, float x_max, float y_min, float y_max, float z_min, float z_max);
 

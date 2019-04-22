@@ -80,7 +80,7 @@ public:
         viz_yolo_pub = it.advertise("yolocloud/detections", 1);
         viz_pub = node.advertise<visualization_msgs::MarkerArray>("yolocloud/markers", 1, true);
         cloud_pub = node.advertise<octomap_msgs::Octomap>("yolocloud/cloud", 1);
-        bbox_pub = node.advertise<visualization_msgs::Marker>("yolocloud/box", 1, true);
+        bbox_pub = node.advertise<visualization_msgs::MarkerArray>("yolocloud/box", 1, true);
         //cloudPCLPub = node.advertise<pcl::PointCloud<pcl::PointXYZ>>("yolocloud/cloudpcl", 1);
 #endif
 
@@ -133,8 +133,7 @@ public:
         // This will be useful for constructing a region-of-interest Point Cloud
         cv::Mat depthMasked = cv::Mat::zeros(depth_image->height, depth_image->width, CV_32FC1);
 
-        Detection tmpdet;
-        tmpdet.label = "";
+        std::vector<pcl::PointXYZL> detectionPositions;
         for (const auto &detection : dets) {
             ImageBoundingBox bbox;
             bbox.x = detection.bbox.x;
@@ -142,9 +141,6 @@ public:
             bbox.width = detection.bbox.width;
             bbox.height = detection.bbox.height;
             bbox.label = detection.label;
-            if (tmpdet.label.empty()) {
-                tmpdet = detection;
-            }
 
             // 10 pixel buffer
             int min_x = std::max(0, detection.bbox.x - 10);
@@ -152,18 +148,17 @@ public:
             int max_x = std::min(cv_ptr->image.cols-1, detection.bbox.x + detection.bbox.width + 20);
             int max_y = std::min(cv_ptr->image.rows-1, detection.bbox.y + detection.bbox.height + 20);
             cv::Rect region(min_x, min_y, max_x - min_x, max_y - min_y);
-            std::cout << "RECT" << region << std::endl;
             depthI(region).copyTo(depthMasked(region));
 
-            int idx = yoloCloud.addObject(bbox, cv_ptr->image, depthI, camToMap);
+            std::pair<int, pcl::PointXYZL> ret = yoloCloud.addObject(bbox, cv_ptr->image, depthI, camToMap);
+            detectionPositions.push_back(ret.second);
 
             // If object was added to yolocloud, add to knowledge base
+            int idx = ret.first;
             if (idx >= 0) {
                 add_to_ltmc(idx);
             }
         }
-
-        int tmpidx = 0;
 
         // Use depthMasked to construct a ROI Point Cloud for use with Octomap
         // Without this, Octomap takes forever
@@ -177,10 +172,14 @@ public:
                                 2);  // Max range of 2. This isn't meters, I don't know wtf this is.
 
         // Bounding box
-        pcl::PointXYZL point = yoloCloud.objects->points[tmpidx];
-        std::cout << "HEYEYEYEYE:" << point.x << " " << point.y << " " << point.z << std::endl;
-
-        extract_bounding_box(point, tmpdet.bbox, camToMap, ir_intrinsics);
+        visualization_msgs::MarkerArray boxes;
+        for (int i = 0; i < dets.size(); i++) {
+            pcl::PointXYZL point = detectionPositions[i];
+            visualization_msgs::Marker box = extract_bounding_box(point, dets[i].bbox, camToMap, ir_intrinsics);
+            box.id = i;
+            boxes.markers.push_back(box);
+        }
+        bbox_pub.publish(boxes);
 
         // Record end time
         auto finish = std::chrono::high_resolution_clock::now();
@@ -207,7 +206,7 @@ public:
     }
 
 
-    void extract_bounding_box(pcl::PointXYZL &point, cv::Rect &yolobbox, Eigen::Affine3f &camToMap, Eigen::Matrix3f &ir_intrinsics) {
+    visualization_msgs::Marker extract_bounding_box(pcl::PointXYZL &point, cv::Rect &yolobbox, Eigen::Affine3f &camToMap, Eigen::Matrix3f &ir_intrinsics) {
         // This gets the min and max of the rough bounding box to look for object points
         // The min and max is cutoff by the true min and max of our Octomap
         double min_bb_x;
@@ -239,14 +238,12 @@ public:
         }
 
         // Filter out z's that are too low (e.g. if part of the table is captured)
-        std::cout << "PRE:" << pts.size() << " " << minZ << std::endl;
         std::vector<Eigen::Vector3f> ptsZFiltered;
         for (const auto &pt : pts) {
-            if (pt(2) > minZ + 0.03) {
+            if (pt(2) > minZ + 0.045) {
                 ptsZFiltered.push_back(pt);
             }
         }
-        std::cout << "POST:" << ptsZFiltered.size() << std::endl;
         pts = ptsZFiltered;
 
         // Prepare batch of points to check if in YOLO bounding box
@@ -275,13 +272,17 @@ public:
             }
         }
 
+        if (objectCloud->points.empty()) {
+            return visualization_msgs::Marker();
+        }
+
         // Use Euclidean clustering to filter out noise like objects that are behind our object
         pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
         tree->setInputCloud(objectCloud);
 
         std::vector<pcl::PointIndices> cluster_indices;
         pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
-        ec.setClusterTolerance(0.03); // 3cm
+        ec.setClusterTolerance(0.02); // 2cm
         ec.setMinClusterSize(50);
         ec.setMaxClusterSize(25000);
         ec.setSearchMethod(tree);
@@ -289,7 +290,7 @@ public:
         ec.extract(cluster_indices);
 
         if (cluster_indices.empty()) {
-            return;
+            return visualization_msgs::Marker();
         }
 
         // TODO: Closest cluster might be better than max...
@@ -348,7 +349,8 @@ public:
         marker.color.g = 0.;
         marker.color.a = 1.;
         marker.lifetime = ros::Duration(0);
-        bbox_pub.publish(marker);
+
+        return marker;
     }
 
 
