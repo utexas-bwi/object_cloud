@@ -33,6 +33,9 @@
 #include <opencv/highgui.h>
 #include <chrono>
 
+#include <pcl/filters/extract_indices.h>
+#include <pcl/kdtree/kdtree.h>
+#include <pcl/segmentation/extract_clusters.h>
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -77,7 +80,7 @@ public:
         viz_pub = node.advertise<visualization_msgs::MarkerArray>("yolocloud/markers", 1, true);
         cloud_pub = node.advertise<octomap_msgs::Octomap>("yolocloud/cloud", 1);
         bbox_pub = node.advertise<visualization_msgs::Marker>("yolocloud/box", 1, true);
-        cloudPCLPub = node.advertise<pcl::PointCloud<pcl::PointXYZ>>("yolocloud/cloudpcl", 1);
+        //cloudPCLPub = node.advertise<pcl::PointCloud<pcl::PointXYZ>>("yolocloud/cloudpcl", 1);
 #endif
 
         // NOTE: We assume there's only one YoloCloud, so this will blow away anything that is sensed
@@ -111,7 +114,7 @@ public:
             return;
         }
 
-        Eigen::Affine3d camToMap = tf2::transformToEigen(transform);
+        Eigen::Affine3f camToMap = tf2::transformToEigen(transform).cast<float>();
 
         cv::Mat depthI(depth_image->height, depth_image->width, CV_32FC1);
         memcpy(depthI.data, depth_image->data.data(), depth_image->data.size());
@@ -151,7 +154,7 @@ public:
             std::cout << "RECT" << region << std::endl;
             depthI(region).copyTo(depthMasked(region));
 
-            int idx = yoloCloud.addObject(bbox, cv_ptr->image, depthI, camToMap.cast<float>());
+            int idx = yoloCloud.addObject(bbox, cv_ptr->image, depthI, camToMap);
 
             // If object was added to yolocloud, add to knowledge base
             if (idx >= 0) {
@@ -165,14 +168,7 @@ public:
         // Without this, Octomap takes forever
         Eigen::Matrix3f ir_intrinsics;
         ir_intrinsics << 535.2900990271, 0, 320.0, 0, 535.2900990271, 240.0, 0, 0, 1;
-        octomap::Pointcloud cloud = PointCloudConstructor::construct(ir_intrinsics, depthMasked, camToMap.cast<float>());
-
-        pcl::PointCloud<pcl::PointXYZ> pclcloud;
-        pclcloud.header.frame_id = "map";
-        for (const auto &pt : cloud) {
-            pclcloud.points.emplace_back(pt.x(), pt.y(), pt.z());
-        }
-        cloudPCLPub.publish(pclcloud);
+        octomap::Pointcloud cloud = PointCloudConstructor::construct(ir_intrinsics, depthMasked, camToMap);
 
         // Insert ROI PointCloud into Octree
         octree.insertPointCloud(cloud,
@@ -183,6 +179,34 @@ public:
         pcl::PointXYZL point = yoloCloud.objects->points[tmpidx];
         std::cout << "HEYEYEYEYE:" << point.x << " " << point.y << " " << point.z << std::endl;
 
+        extract_bounding_box(point, tmpdet.bbox, camToMap, ir_intrinsics);
+
+        // Record end time
+        auto finish = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = finish - start;
+        std::cout << "Elapsed time: " << elapsed.count() << " s\n";
+
+#ifdef VISUALIZE
+        // Publish Octree
+        octomap_msgs::Octomap cloudMsg;
+        cloudMsg.header.frame_id = "map";
+        octomap_msgs::binaryMapToMsg(octree, cloudMsg);
+        cloud_pub.publish(cloudMsg);
+
+        // Publish YOLO
+        for (const auto &d : dets) {
+            cv::rectangle(cv_ptr->image, d.bbox, cv::Scalar(100, 100, 0), 3);
+        }
+        sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", cv_ptr->image).toImageMsg();
+        viz_yolo_pub.publish(msg);
+
+        // Publish cloud
+        visualize();
+#endif
+    }
+
+
+    void extract_bounding_box(pcl::PointXYZL &point, cv::Rect &yolobbox, Eigen::Affine3f &camToMap, Eigen::Matrix3f &ir_intrinsics) {
         double min_bb_x;
         double min_bb_y;
         double min_bb_z;
@@ -214,13 +238,13 @@ public:
         }
 
         // Filter out z's that are too low (e.g. if part of the table is captured)
-        std::vector<Eigen::Vector3f> ptsFiltered;
+        std::vector<Eigen::Vector3f> ptsZFiltered;
         for (const auto &pt : pts) {
             if (pt(2) > minZ + 0.05) {
-                ptsFiltered.push_back(pt);
+                ptsZFiltered.push_back(pt);
             }
         }
-        pts = ptsFiltered;
+        pts = ptsZFiltered;
 
         // Prepare batch points to check
         Eigen::Matrix<float, 3, Eigen::Dynamic> candidatePoints(3, pts.size());
@@ -229,9 +253,46 @@ public:
         }
 
         // Project batch
-        Eigen::Affine3f mapToCam = camToMap.inverse().cast<float>();
+        Eigen::Affine3f mapToCam = camToMap.inverse();
         Eigen::Matrix<float, 3, Eigen::Dynamic> imagePoints = ir_intrinsics * mapToCam * candidatePoints;
         imagePoints.array().rowwise() /= imagePoints.row(2).array();
+
+
+        pcl::PointCloud<pcl::PointXYZ>::Ptr objectCloud(new pcl::PointCloud<pcl::PointXYZ>);
+        for (int i = 0; i < pts.size(); ++i) {
+            float x = imagePoints(0, i);
+            float y = imagePoints(1, i);
+
+            int x_b = yolobbox.x;
+            int y_b = yolobbox.y;
+
+            // Within YOLO Box
+            if (x_b <= x && x < x_b + yolobbox.width && y_b <= y && y < y_b + yolobbox.height) {
+                objectCloud->points.emplace_back(pts[i](0), pts[i](1), pts[i](2));
+            }
+        }
+
+        pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
+        tree->setInputCloud(objectCloud);
+
+        std::vector<pcl::PointIndices> cluster_indices;
+        pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
+        ec.setClusterTolerance(0.03); // 3cm
+        ec.setMinClusterSize(50);
+        ec.setMaxClusterSize(25000);
+        ec.setSearchMethod(tree);
+        ec.setInputCloud(objectCloud);
+        ec.extract(cluster_indices);
+
+        if (cluster_indices.empty()) {
+            return;
+        }
+
+        auto max_cluster = std::max_element(cluster_indices.begin(),
+                                            cluster_indices.end(),
+                                            [](const pcl::PointIndices &a, const pcl::PointIndices &b) {
+            return a.indices.size() < b.indices.size();
+        });
 
         float min_x = std::numeric_limits<float>::max();
         float min_y = std::numeric_limits<float>::max();
@@ -239,29 +300,16 @@ public:
         float max_x = -std::numeric_limits<float>::max();
         float max_y = -std::numeric_limits<float>::max();
         float max_z = -std::numeric_limits<float>::max();
-        for (int i = 0; i < pts.size(); ++i) {
-            float x = imagePoints(0, i);
-            float y = imagePoints(1, i);
+        for (std::vector<int>::const_iterator pit = max_cluster->indices.begin(); pit != max_cluster->indices.end (); ++pit) {
+            pcl::PointXYZ pt = objectCloud->points[*pit];
 
-            int x_b = tmpdet.bbox.x;
-            int y_b = tmpdet.bbox.y;
-
-            // Within YOLO Box
-            if (x_b <= x && x < x_b + tmpdet.bbox.width && y_b <= y && y < y_b + tmpdet.bbox.height) {
-                min_x = std::min(min_x, pts[i](0));
-                min_y = std::min(min_y, pts[i](1));
-                min_z = std::min(min_z, pts[i](2));
-                max_x = std::max(max_x, pts[i](0));
-                max_y = std::max(max_y, pts[i](1));
-                max_z = std::max(max_z, pts[i](2));
-            }
+            min_x = std::min(min_x, pt.x);
+            min_y = std::min(min_y, pt.y);
+            min_z = std::min(min_z, pt.z);
+            max_x = std::max(max_x, pt.x);
+            max_y = std::max(max_y, pt.y);
+            max_z = std::max(max_z, pt.z);
         }
-
-
-        // Record end time
-        auto finish = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> elapsed = finish - start;
-        std::cout << "Elapsed time: " << elapsed.count() << " s\n";
 
         std::cout << min_x << " " << min_y << " " << min_z << std::endl;
         std::cout << max_x << " " << max_y << " " << max_z << std::endl;
@@ -286,24 +334,6 @@ public:
         marker.color.a = 1.;
         marker.lifetime = ros::Duration(0);
         bbox_pub.publish(marker);
-
-#ifdef VISUALIZE
-        // Publish Octree
-        octomap_msgs::Octomap cloudMsg;
-        cloudMsg.header.frame_id = "map";
-        octomap_msgs::binaryMapToMsg(octree, cloudMsg);
-        cloud_pub.publish(cloudMsg);
-
-        // Publish YOLO
-        for (const auto &d : dets) {
-            cv::rectangle(cv_ptr->image, d.bbox, cv::Scalar(100, 100, 0), 3);
-        }
-        sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", cv_ptr->image).toImageMsg();
-        viz_yolo_pub.publish(msg);
-
-        // Publish cloud
-        visualize();
-#endif
     }
 
 
