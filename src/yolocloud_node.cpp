@@ -117,7 +117,7 @@ public:
 
         Eigen::Affine3f camToMap = tf2::transformToEigen(transform).cast<float>();
 
-        cv::Mat depthI(depth_image->height, depth_image->width, CV_32FC1);
+        cv::Mat depthI(depth_image->height, depth_image->width, CV_16UC1);
         memcpy(depthI.data, depth_image->data.data(), depth_image->data.size());
 
         // Record start time
@@ -131,7 +131,7 @@ public:
 
         // Parts of the depth image that have YOLO objects
         // This will be useful for constructing a region-of-interest Point Cloud
-        cv::Mat depthMasked = cv::Mat::zeros(depth_image->height, depth_image->width, CV_32FC1);
+        cv::Mat depthMasked = cv::Mat::zeros(depth_image->height, depth_image->width, CV_16UC1);
 
         std::vector<pcl::PointXYZL> detectionPositions;
         for (const auto &detection : dets) {
@@ -468,7 +468,7 @@ int main (int argc, char **argv) {
                                                 10,
                                                 image_transport::TransportHints("compressed"));
     image_transport::SubscriberFilter depth_sub(yc_node.it,
-                                                "/hsrb/head_rgbd_sensor/depth_registered/image",
+                                                "/hsrb/head_rgbd_sensor/depth_registered/image_rect_raw",
                                                 10);
     message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(10), image_sub, depth_sub);
     sync.registerCallback(boost::bind(&YoloCloudNode::data_callback, &yc_node, _1, _2));

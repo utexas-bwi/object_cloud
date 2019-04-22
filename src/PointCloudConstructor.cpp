@@ -22,22 +22,24 @@ octomap::Pointcloud PointCloudConstructor::construct(const Matrix3f &ir_intrinsi
     int valid_points = 0;
 
     for (int y = 0; y < depthImage.rows; ++y) {
-        const float *row = depthImage.ptr<float>(y);
+        const uint16_t *row = depthImage.ptr<uint16_t>(y);
 
         for (int x = 0; x < depthImage.cols; ++x) {
             // If depth ain't valid, skip
-            if (std::isnan(row[x]) || row[x] == 0) {
+            if (row[x] == 0) {
                 continue;
             }
+
+            float depth = row[x] / 1000.;
 
             // Analytic solution to intrinsics^-1(point) * depth
             // Eigen is column major order, so *4 is column size
             pointsData[valid_points*3 + 0] =
-                    (x - x_c) * (1.0 / sx) * row[x];
+                    (x - x_c) * (1.0 / sx) * depth;
             pointsData[valid_points*3 + 1] =
-                    (y - y_c) * (1.0 / sy) * row[x];
+                    (y - y_c) * (1.0 / sy) * depth;
 
-            pointsData[valid_points*3 + 2] = row[x];
+            pointsData[valid_points*3 + 2] = depth;
 
             valid_points++;
         }

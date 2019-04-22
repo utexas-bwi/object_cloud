@@ -89,7 +89,7 @@ std::pair<int, pcl::PointXYZL> YoloCloud::addObject(const ImageBoundingBox &bbox
     }
 */
 
-    float depth = depth_image.at<float>(bbox.y + bbox.height/2., bbox.x + bbox.width/2.);
+    float depth = depth_image.at<uint16_t>(bbox.y + bbox.height/2., bbox.x + bbox.width/2.) / 1000.;
     if (depth == 0 || isnan(depth)) {
         return std::make_pair(-1, pcl::PointXYZL());
     }
