@@ -33,6 +33,7 @@
 #include <opencv/highgui.h>
 #include <chrono>
 
+#include <pcl/features/moment_of_inertia_estimation.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/kdtree/kdtree.h>
 #include <pcl/segmentation/extract_clusters.h>
@@ -60,6 +61,7 @@ private:
     image_transport::Publisher viz_yolo_pub;
     ros::Publisher viz_pub;
     ros::Publisher bbox_pub;
+    ros::Publisher tmp_pub;
     ros::Publisher cloudPCLPub;
     ros::Publisher cloud_pub;
 #endif
@@ -80,6 +82,7 @@ public:
         viz_pub = node.advertise<visualization_msgs::MarkerArray>("yolocloud/markers", 1, true);
         cloud_pub = node.advertise<octomap_msgs::Octomap>("yolocloud/cloud", 1);
         bbox_pub = node.advertise<visualization_msgs::Marker>("yolocloud/box", 1, true);
+        tmp_pub = node.advertise<geometry_msgs::PoseStamped>("yolocloud/boxpose", 1, true);
         //cloudPCLPub = node.advertise<pcl::PointCloud<pcl::PointXYZ>>("yolocloud/cloudpcl", 1);
 #endif
 
@@ -207,6 +210,8 @@ public:
 
 
     void extract_bounding_box(pcl::PointXYZL &point, cv::Rect &yolobbox, Eigen::Affine3f &camToMap, Eigen::Matrix3f &ir_intrinsics) {
+        // This gets the min and max of the rough bounding box to look for object points
+        // The min and max is cutoff by the true min and max of our Octomap
         double min_bb_x;
         double min_bb_y;
         double min_bb_z;
@@ -223,10 +228,8 @@ public:
         max_bb_z = std::min(max_bb_z, point.z + 0.3);
         octomap::point3d min(min_bb_x, min_bb_y, min_bb_z);
         octomap::point3d max(max_bb_x, max_bb_y, max_bb_z);
-        std::cout << min << std::endl;
-        std::cout << max << std::endl;
-        std::cout << "=====================" << std::endl;
 
+        // Octomap stores free space, so just focus on occupied cells within our rough bounding box
         std::vector<Eigen::Vector3f> pts;
         float minZ = std::numeric_limits<float>::max();
         for (octomap::OcTree::leaf_bbx_iterator iter = octree.begin_leafs_bbx(min, max),
@@ -238,15 +241,17 @@ public:
         }
 
         // Filter out z's that are too low (e.g. if part of the table is captured)
+        std::cout << "PRE:" << pts.size() << " " << minZ << std::endl;
         std::vector<Eigen::Vector3f> ptsZFiltered;
         for (const auto &pt : pts) {
-            if (pt(2) > minZ + 0.05) {
+            if (pt(2) > minZ + 0.03) {
                 ptsZFiltered.push_back(pt);
             }
         }
+        std::cout << "POST:" << ptsZFiltered.size() << std::endl;
         pts = ptsZFiltered;
 
-        // Prepare batch points to check
+        // Prepare batch of points to check if in YOLO bounding box
         Eigen::Matrix<float, 3, Eigen::Dynamic> candidatePoints(3, pts.size());
         for (int i = 0; i < pts.size(); ++i) {
             candidatePoints.col(i) = pts[i];
@@ -257,7 +262,7 @@ public:
         Eigen::Matrix<float, 3, Eigen::Dynamic> imagePoints = ir_intrinsics * mapToCam * candidatePoints;
         imagePoints.array().rowwise() /= imagePoints.row(2).array();
 
-
+        // Construct PCL Point Cloud with subset of points that project into YOLO bounding box
         pcl::PointCloud<pcl::PointXYZ>::Ptr objectCloud(new pcl::PointCloud<pcl::PointXYZ>);
         for (int i = 0; i < pts.size(); ++i) {
             float x = imagePoints(0, i);
@@ -272,6 +277,7 @@ public:
             }
         }
 
+        // Use Euclidean clustering to filter out noise like objects that are behind our object
         pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
         tree->setInputCloud(objectCloud);
 
@@ -288,6 +294,7 @@ public:
             return;
         }
 
+        // TODO: Closest cluster might be better than max...
         auto max_cluster = std::max_element(cluster_indices.begin(),
                                             cluster_indices.end(),
                                             [](const pcl::PointIndices &a, const pcl::PointIndices &b) {
@@ -300,8 +307,10 @@ public:
         float max_x = -std::numeric_limits<float>::max();
         float max_y = -std::numeric_limits<float>::max();
         float max_z = -std::numeric_limits<float>::max();
+        pcl::PointCloud<pcl::PointXYZ>::Ptr clusteredCloud(new pcl::PointCloud<pcl::PointXYZ>);
         for (std::vector<int>::const_iterator pit = max_cluster->indices.begin(); pit != max_cluster->indices.end (); ++pit) {
             pcl::PointXYZ pt = objectCloud->points[*pit];
+            clusteredCloud->points.push_back(pt);
 
             min_x = std::min(min_x, pt.x);
             min_y = std::min(min_y, pt.y);
@@ -311,23 +320,55 @@ public:
             max_z = std::max(max_z, pt.z);
         }
 
-        std::cout << min_x << " " << min_y << " " << min_z << std::endl;
-        std::cout << max_x << " " << max_y << " " << max_z << std::endl;
+        pcl::MomentOfInertiaEstimation<pcl::PointXYZ> feature_extractor;
+        feature_extractor.setInputCloud(clusteredCloud);
+        feature_extractor.compute();
+
+        pcl::PointXYZ min_point_AABB;
+        pcl::PointXYZ max_point_AABB;
+        pcl::PointXYZ min_point_OBB;
+        pcl::PointXYZ max_point_OBB;
+        pcl::PointXYZ position_OBB;
+        Eigen::Matrix3f rotation_matrix_OBB;
+
+        feature_extractor.getAABB(min_point_AABB, max_point_AABB);
+        feature_extractor.getOBB(min_point_OBB, max_point_OBB, position_OBB, rotation_matrix_OBB);
+
+        // We know that the object is perpendicular to the ground
+        auto rpy = rotation_matrix_OBB.eulerAngles(0, 1, 2);
+        std::cout << "rpy: " << rpy(0)*180/M_PI << " " << rpy(1)*180/M_PI << rpy(2)*180/M_PI << std::endl;
+        Eigen::Quaternionf q;
+        q = Eigen::AngleAxisf(0, Eigen::Vector3f::UnitX())
+            * Eigen::AngleAxisf(0, Eigen::Vector3f::UnitY())
+            * Eigen::AngleAxisf(rpy(2), Eigen::Vector3f::UnitZ());
+
+        Eigen::Quaternionf quat_OBB(rotation_matrix_OBB);
+
+        geometry_msgs::PoseStamped pose;
+        pose.header.frame_id = "map";
+        pose.pose.orientation.x = quat_OBB.x();
+        pose.pose.orientation.y = quat_OBB.y();
+        pose.pose.orientation.z = quat_OBB.z();
+        pose.pose.orientation.w = quat_OBB.w();
+        tmp_pub.publish(pose);
+
+        std::cout << min_point_OBB << std::endl;
+        std::cout << max_point_OBB << std::endl;
         visualization_msgs::Marker marker;
         marker.header.frame_id = "map";
         marker.id = 0;
         marker.type = 1;
         marker.action = 0;
-        marker.pose.position.x = (min_x + max_x) / 2;
-        marker.pose.position.y = (min_y + max_y) / 2;
-        marker.pose.position.z = (min_z + max_z) / 2;
-        marker.pose.orientation.x = 0.;
-        marker.pose.orientation.y = 0.;
-        marker.pose.orientation.z = 0.;
-        marker.pose.orientation.w = 1.;
-        marker.scale.x = max_x - min_x;
-        marker.scale.y = max_y - min_y;
-        marker.scale.z = max_z - min_z;
+        marker.pose.position.x = position_OBB.x;
+        marker.pose.position.y = position_OBB.y;
+        marker.pose.position.z = position_OBB.z;
+        marker.pose.orientation.x = quat_OBB.x();
+        marker.pose.orientation.y = quat_OBB.y();
+        marker.pose.orientation.z = quat_OBB.z();
+        marker.pose.orientation.w = quat_OBB.w();
+        marker.scale.x = max_point_OBB.x - min_point_OBB.x;
+        marker.scale.y = max_point_OBB.y - min_point_OBB.y;
+        marker.scale.z = max_point_OBB.z - min_point_OBB.z;
         marker.color.r = 1.;
         marker.color.b = 0.;
         marker.color.g = 0.;
