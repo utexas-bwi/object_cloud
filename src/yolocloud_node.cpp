@@ -61,7 +61,6 @@ private:
     image_transport::Publisher viz_yolo_pub;
     ros::Publisher viz_pub;
     ros::Publisher bbox_pub;
-    ros::Publisher tmp_pub;
     ros::Publisher cloudPCLPub;
     ros::Publisher cloud_pub;
 #endif
@@ -82,7 +81,6 @@ public:
         viz_pub = node.advertise<visualization_msgs::MarkerArray>("yolocloud/markers", 1, true);
         cloud_pub = node.advertise<octomap_msgs::Octomap>("yolocloud/cloud", 1);
         bbox_pub = node.advertise<visualization_msgs::Marker>("yolocloud/box", 1, true);
-        tmp_pub = node.advertise<geometry_msgs::PoseStamped>("yolocloud/boxpose", 1, true);
         //cloudPCLPub = node.advertise<pcl::PointCloud<pcl::PointXYZ>>("yolocloud/cloudpcl", 1);
 #endif
 
@@ -326,49 +324,25 @@ public:
 
         pcl::PointXYZ min_point_AABB;
         pcl::PointXYZ max_point_AABB;
-        pcl::PointXYZ min_point_OBB;
-        pcl::PointXYZ max_point_OBB;
-        pcl::PointXYZ position_OBB;
-        Eigen::Matrix3f rotation_matrix_OBB;
 
+        // TODO: Use oriented bbox -- it looks terrible, but it can probably be fixed by constraining the rotation to around Z
         feature_extractor.getAABB(min_point_AABB, max_point_AABB);
-        feature_extractor.getOBB(min_point_OBB, max_point_OBB, position_OBB, rotation_matrix_OBB);
 
-        // We know that the object is perpendicular to the ground
-        auto rpy = rotation_matrix_OBB.eulerAngles(0, 1, 2);
-        std::cout << "rpy: " << rpy(0)*180/M_PI << " " << rpy(1)*180/M_PI << rpy(2)*180/M_PI << std::endl;
-        Eigen::Quaternionf q;
-        q = Eigen::AngleAxisf(0, Eigen::Vector3f::UnitX())
-            * Eigen::AngleAxisf(0, Eigen::Vector3f::UnitY())
-            * Eigen::AngleAxisf(rpy(2), Eigen::Vector3f::UnitZ());
-
-        Eigen::Quaternionf quat_OBB(rotation_matrix_OBB);
-
-        geometry_msgs::PoseStamped pose;
-        pose.header.frame_id = "map";
-        pose.pose.orientation.x = quat_OBB.x();
-        pose.pose.orientation.y = quat_OBB.y();
-        pose.pose.orientation.z = quat_OBB.z();
-        pose.pose.orientation.w = quat_OBB.w();
-        tmp_pub.publish(pose);
-
-        std::cout << min_point_OBB << std::endl;
-        std::cout << max_point_OBB << std::endl;
         visualization_msgs::Marker marker;
         marker.header.frame_id = "map";
         marker.id = 0;
         marker.type = 1;
         marker.action = 0;
-        marker.pose.position.x = position_OBB.x;
-        marker.pose.position.y = position_OBB.y;
-        marker.pose.position.z = position_OBB.z;
-        marker.pose.orientation.x = quat_OBB.x();
-        marker.pose.orientation.y = quat_OBB.y();
-        marker.pose.orientation.z = quat_OBB.z();
-        marker.pose.orientation.w = quat_OBB.w();
-        marker.scale.x = max_point_OBB.x - min_point_OBB.x;
-        marker.scale.y = max_point_OBB.y - min_point_OBB.y;
-        marker.scale.z = max_point_OBB.z - min_point_OBB.z;
+        marker.pose.position.x = (min_point_AABB.x + max_point_AABB.x) / 2.;
+        marker.pose.position.y = (min_point_AABB.y + max_point_AABB.y) / 2.;
+        marker.pose.position.z = (min_point_AABB.z + max_point_AABB.z) / 2.;
+        marker.pose.orientation.x = 0;
+        marker.pose.orientation.y = 0;
+        marker.pose.orientation.z = 0;
+        marker.pose.orientation.w = 1;
+        marker.scale.x = max_point_AABB.x - min_point_AABB.x;
+        marker.scale.y = max_point_AABB.y - min_point_AABB.y;
+        marker.scale.z = max_point_AABB.z - min_point_AABB.z;
         marker.color.r = 1.;
         marker.color.b = 0.;
         marker.color.g = 0.;
