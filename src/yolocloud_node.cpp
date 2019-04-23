@@ -340,84 +340,36 @@ public:
         feature_extractor.getOBB(min_point_OBB, max_point_OBB, position_OBB, rotation_matrix_OBB);
         feature_extractor.getEigenVectors(major_vector, middle_vector, minor_vector);
 
-        Eigen::Vector3f z = Eigen::Vector3f::UnitZ();
-        std::cout << "==================" << std::endl;
-        std::cout << major_vector.transpose() << "; " << middle_vector.transpose() << "; " << minor_vector.transpose() << std::endl;
-        std::cout << std::abs(z.dot(major_vector)) << "; " << std::abs(z.dot(middle_vector)) << "; " << std::abs(z.dot(minor_vector)) << std::endl;
-
         Eigen::Vector3f eigenvectors[3] = { major_vector, middle_vector, minor_vector };
 
-        std::pair<float, int> ordering[3] = {
-                std::make_pair(std::abs(z.dot(major_vector)), 0),
-                std::make_pair(std::abs(z.dot(middle_vector)), 1),
-                std::make_pair(std::abs(z.dot(minor_vector)), 2)
-        };
-        std::sort(ordering, ordering+3, [](const std::pair<float, int> &a, const std::pair<float, int> &b) {
-            return a.first < b.first;
-        });
         Eigen::Vector3f x = Eigen::Vector3f::UnitX();
-        std::pair<float, int> ordering2[3] = {
-                std::make_pair(std::abs(x.dot(major_vector)), 0),
-                std::make_pair(std::abs(x.dot(middle_vector)), 1),
-                std::make_pair(std::abs(x.dot(minor_vector)), 2)
-        };
-        std::sort(ordering2, ordering2+3, [](const std::pair<float, int> &a, const std::pair<float, int> &b) {
-            return a.first < b.first;
-        });
         Eigen::Vector3f y = Eigen::Vector3f::UnitY();
-        std::pair<float, int> ordering3[3] = {
-                std::make_pair(std::abs(y.dot(major_vector)), 0),
-                std::make_pair(std::abs(y.dot(middle_vector)), 1),
-                std::make_pair(std::abs(y.dot(minor_vector)), 2)
+        Eigen::Vector3f z = Eigen::Vector3f::UnitZ();
+        float cos_with_x[3] = {
+                std::abs(x.dot(major_vector)),
+                std::abs(x.dot(middle_vector)),
+                std::abs(x.dot(minor_vector))
         };
-        std::sort(ordering3, ordering3+3, [](const std::pair<float, int> &a, const std::pair<float, int> &b) {
-            return a.first < b.first;
-        });
+        float cos_with_y[3] = {
+                std::abs(y.dot(major_vector)),
+                std::abs(y.dot(middle_vector)),
+                std::abs(y.dot(minor_vector))
+        };
+        float cos_with_z[3] = {
+                std::abs(z.dot(major_vector)),
+                std::abs(z.dot(middle_vector)),
+                std::abs(z.dot(minor_vector))
+        };
 
-        Eigen::Vector3f grounded_axis(eigenvectors[ordering2[2].second]);
+        auto x_idx = std::max_element(cos_with_x, cos_with_x+3) - cos_with_x;
+        auto y_idx = std::max_element(cos_with_y, cos_with_y+3) - cos_with_y;
+        auto z_idx = std::max_element(cos_with_z, cos_with_z+3) - cos_with_z;
+
+        Eigen::Vector3f grounded_axis(eigenvectors[x_idx]);
         grounded_axis(2) = 0.;
         grounded_axis.normalize();
-        Eigen::Quaternionf rot;
-        rot = Eigen::AngleAxisf(acos(grounded_axis.dot(x)), grounded_axis.cross(x).normalized());
-        rot = rot.inverse();
-        std::cout << "HEEEEEEEEEEEEEEEEEEEE" << (rot*x).transpose() << std::endl;
-
-        Eigen::Vector3f rotation_axis3(rot*eigenvectors[ordering2[2].second]);
-        Eigen::Vector3f grounded_axis3(rot*eigenvectors[ordering3[2].second]);
-        grounded_axis3(2) = 0.;
-        grounded_axis3.normalize();
-        Eigen::Vector3f cc = grounded_axis3 - rotation_axis3 * (grounded_axis3.dot(rotation_axis3));
-        cc.normalize();
-        Eigen::Vector3f dd = (rot*eigenvectors[ordering3[2].second]) - rotation_axis3 * ((rot*eigenvectors[ordering3[2].second]).dot(rotation_axis3));
-        dd.normalize();
-        Eigen::Quaternionf rot3;
-        //rot3 = Eigen::AngleAxisf(acos(grounded_axis3.dot(rot*eigenvectors[ordering3[2].second])), grounded_axis3.cross(rot*eigenvectors[ordering3[2].second]).normalized());
-        rot3 = Eigen::AngleAxisf(acos(cc.dot(dd)), rotation_axis3);
-        rot3 = rot3.inverse();
-
-        //rot = rot3 * rot;
-
-        Eigen::Vector3f rotation_axis(eigenvectors[ordering[0].second]);
-        rotation_axis(2) = 0.;
-        rotation_axis.normalize();
-        Eigen::Vector3f vertical_axis = eigenvectors[ordering[2].second];
-        //Eigen::Quaternionf rot;
-        //rot = Eigen::AngleAxisf(-acos(z.dot(vertical_axis)), z.cross(vertical_axis).normalized());
-        std::cout << (rot * vertical_axis).transpose() << std::endl;
-        Eigen::Vector3f c = z - rotation_axis * (z.dot(rotation_axis));
-        Eigen::Vector3f d = vertical_axis - rotation_axis * (vertical_axis.dot(rotation_axis));
-        std::cout << "------------------------" << std::endl;
-        std::cout << -acos(z.dot(vertical_axis))*180/M_PI << std::endl;
-        std::cout << -acos(c.dot(d) / (c.norm()*d.norm()))*180/M_PI << std::endl;
-        std::cout << "------------------------" << std::endl;
-        //rot = Eigen::AngleAxisf(acos(c.dot(d) / (c.norm()*d.norm())), rotation_axis);
-        //rot = rot.inverse();
-
-        Eigen::Vector3f rotated_evectors[3] = {
-            eigenvectors[ordering[0].second],
-            eigenvectors[ordering[1].second],
-            eigenvectors[ordering[2].second]
-        };
+        Eigen::Quaternionf rotation;
+        rotation = Eigen::AngleAxisf(acos(x.dot(grounded_axis)), x.cross(grounded_axis).normalized());
 
         visualization_msgs::MarkerArray marr;
         visualization_msgs::Marker m;
@@ -433,9 +385,9 @@ public:
         origin.z = 0;
         m.points.push_back(origin);
         geometry_msgs::Point end;
-        end.x = rotated_evectors[0](0);
-        end.y = rotated_evectors[0](1);
-        end.z = rotated_evectors[0](2);
+        end.x = eigenvectors[0](0);
+        end.y = eigenvectors[0](1);
+        end.z = eigenvectors[0](2);
         m.points.push_back(end);
         std_msgs::ColorRGBA col;
         col.r = 1;
@@ -455,9 +407,9 @@ public:
         origin2.z = 0;
         m2.points.push_back(origin2);
         geometry_msgs::Point end2;
-        end2.x = rotated_evectors[1](0);
-        end2.y = rotated_evectors[1](1);
-        end2.z = rotated_evectors[1](2);
+        end2.x = eigenvectors[1](0);
+        end2.y = eigenvectors[1](1);
+        end2.z = eigenvectors[1](2);
         m2.points.push_back(end2);
         std_msgs::ColorRGBA col2;
         col2.g = 1;
@@ -477,9 +429,9 @@ public:
         origin3.z = 0;
         m3.points.push_back(origin3);
         geometry_msgs::Point end3;
-        end3.x = rotated_evectors[2](0);
-        end3.y = rotated_evectors[2](1);
-        end3.z = rotated_evectors[2](2);
+        end3.x = eigenvectors[2](0);
+        end3.y = eigenvectors[2](1);
+        end3.z = eigenvectors[2](2);
         m3.points.push_back(end3);
         std_msgs::ColorRGBA col3;
         col3.b = 1;
@@ -500,9 +452,9 @@ public:
         morigin.z = 0;
         mm.points.push_back(morigin);
         geometry_msgs::Point mend;
-        mend.x = (rot*x)(0);
-        mend.y = (rot*x)(1);
-        mend.z = (rot*x)(2);
+        mend.x = (rotation*x)(0);
+        mend.y = (rotation*x)(1);
+        mend.z = (rotation*x)(2);
         mm.points.push_back(mend);
         std_msgs::ColorRGBA mcol;
         mcol.r = 1;
@@ -522,9 +474,9 @@ public:
         originm2.z = 0;
         mm2.points.push_back(originm2);
         geometry_msgs::Point endm2;
-        endm2.x = (rot*y)(0);
-        endm2.y = (rot*y)(1);
-        endm2.z = (rot*y)(2);
+        endm2.x = (rotation*y)(0);
+        endm2.y = (rotation*y)(1);
+        endm2.z = (rotation*y)(2);
         mm2.points.push_back(endm2);
         std_msgs::ColorRGBA colm2;
         colm2.g = 1;
@@ -544,9 +496,9 @@ public:
         originm3.z = 0;
         mm3.points.push_back(originm3);
         geometry_msgs::Point endm3;
-        endm3.x = (rot*z)(0);
-        endm3.y = (rot*z)(1);
-        endm3.z = (rot*z)(2);
+        endm3.x = (rotation*z)(0);
+        endm3.y = (rotation*z)(1);
+        endm3.z = (rotation*z)(2);
         mm3.points.push_back(endm3);
         std_msgs::ColorRGBA colm3;
         colm3.b = 1;
@@ -559,33 +511,10 @@ public:
 
         Eigen::Vector3f orig_min_point_OBB(min_point_OBB.x, min_point_OBB.y, min_point_OBB.z);
         Eigen::Vector3f orig_max_point_OBB(max_point_OBB.x, max_point_OBB.y, max_point_OBB.z);
-        Eigen::Vector3f min_point(0, 0, orig_min_point_OBB(ordering[2].second));
-        Eigen::Vector3f max_point(0, 0, orig_max_point_OBB(ordering[2].second));
-
-        float angle_with_x = acos(Eigen::Vector3f::UnitX().dot(rotated_evectors[0]));
-        float angle_with_y = acos(Eigen::Vector3f::UnitY().dot(rotated_evectors[0]));
-        Eigen::Quaternionf rot2;
-        if (std::abs(angle_with_x) < std::abs(angle_with_y)) {
-            rot2 = Eigen::AngleAxisf(angle_with_x, Eigen::Vector3f::UnitZ());
-            min_point(0) = orig_min_point_OBB(ordering[0].second);
-            min_point(1) = orig_min_point_OBB(ordering[1].second);
-            max_point(0) = orig_max_point_OBB(ordering[0].second);
-            max_point(1) = orig_max_point_OBB(ordering[1].second);
-        } else {
-            rot2 = Eigen::AngleAxisf(angle_with_y, Eigen::Vector3f::UnitZ());
-            min_point(0) = orig_min_point_OBB(ordering[1].second);
-            min_point(1) = orig_min_point_OBB(ordering[0].second);
-            max_point(0) = orig_max_point_OBB(ordering[1].second);
-            max_point(1) = orig_max_point_OBB(ordering[0].second);
-        }
-
-        rot2 = Eigen::AngleAxisf(-acos(Eigen::Vector3f::UnitZ().dot(eigenvectors[ordering[2].second])),
-                                 Eigen::Vector3f::UnitZ().cross(eigenvectors[ordering[2].second]).normalized());
+        Eigen::Vector3f min_point(orig_min_point_OBB(x_idx), orig_min_point_OBB(y_idx), orig_min_point_OBB(z_idx));
+        Eigen::Vector3f max_point(orig_max_point_OBB(x_idx), orig_max_point_OBB(y_idx), orig_max_point_OBB(z_idx));
 
         Eigen::Quaternionf quat_OBB(rotation_matrix_OBB);
-
-        //rot2 = rot2 * quat_OBB;
-        //quat_OBB = quat_OBB * rot2;
 
         geometry_msgs::PoseStamped ps;
         ps.header.frame_id = "map";
@@ -596,24 +525,6 @@ public:
         pose_pub.publish(ps);
 
         std::cout << "==================" << std::endl;
-
-        // We know that the object is perpendicular to the ground
-        auto rpy = rotation_matrix_OBB.eulerAngles(0, 1, 2);
-        std::cout << "rpy: " << rpy(0)*180/M_PI << " " << rpy(1)*180/M_PI << rpy(2)*180/M_PI << std::endl;
-        Eigen::Quaternionf q;
-        q = Eigen::AngleAxisf(0, Eigen::Vector3f::UnitX())
-            * Eigen::AngleAxisf(0, Eigen::Vector3f::UnitY())
-            * Eigen::AngleAxisf(rpy(2), Eigen::Vector3f::UnitZ());
-
-        std::cout << "AABB_min: " <<  min_point_AABB.x << " " << min_point_AABB.y << " " << min_point_AABB.z << std::endl;
-        std::cout << "AABB_max: " <<  max_point_AABB.x << " " << max_point_AABB.y << " " << max_point_AABB.z << std::endl;
-        std::cout << "OBB_min: " <<  min_point_OBB.x << " " << min_point_OBB.y << " " << min_point_OBB.z << std::endl;
-        std::cout << "OBB_max: " <<  max_point_OBB.x << " " << max_point_OBB.y << " " << max_point_OBB.z << std::endl;
-        std::cout << "Position_OBB: " <<  position_OBB.x << " " << position_OBB.y << " " << position_OBB.z << std::endl;
-        Eigen::Vector3f rotated_min = rotation_matrix_OBB * Eigen::Vector3f(min_point_AABB.x, min_point_AABB.y, min_point_AABB.z);
-        Eigen::Vector3f rotated_max = rotation_matrix_OBB * Eigen::Vector3f(max_point_AABB.x, max_point_AABB.y, max_point_AABB.z);
-        std::cout << "AABBRotated_min: " <<  rotated_min << std::endl;
-        std::cout << "AABBRotated_max: " <<  rotated_max << std::endl;
 
         visualization_msgs::Marker marker;
         marker.header.frame_id = "map";
@@ -664,10 +575,10 @@ public:
         //marker2.pose.orientation.y = 0;
         //marker2.pose.orientation.z = 0;
         //marker2.pose.orientation.w = 1;
-        marker2.pose.orientation.x = rot2.x();
-        marker2.pose.orientation.y = rot2.y();
-        marker2.pose.orientation.z = rot2.z();
-        marker2.pose.orientation.w = rot2.w();
+        marker2.pose.orientation.x = rotation.x();
+        marker2.pose.orientation.y = rotation.y();
+        marker2.pose.orientation.z = rotation.z();
+        marker2.pose.orientation.w = rotation.w();
         //marker2.scale.x = max_point_AABB.x - min_point_AABB.x;
         //marker2.scale.y = max_point_AABB.y - min_point_AABB.y;
         //marker2.scale.z = max_point_AABB.z - min_point_AABB.z;
@@ -681,7 +592,7 @@ public:
         marker2.lifetime = ros::Duration(0);
 
         markers.markers.push_back(marker);
-        //markers.markers.push_back(marker2);
+        markers.markers.push_back(marker2);
     }
 
 
