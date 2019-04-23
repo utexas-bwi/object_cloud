@@ -61,6 +61,8 @@ private:
     image_transport::Publisher viz_yolo_pub;
     ros::Publisher viz_pub;
     ros::Publisher bbox_pub;
+    ros::Publisher pose_pub;
+    ros::Publisher axes_pub;
     ros::Publisher cloudPCLPub;
     ros::Publisher cloud_pub;
 #endif
@@ -81,6 +83,8 @@ public:
         viz_pub = node.advertise<visualization_msgs::MarkerArray>("yolocloud/markers", 1, true);
         cloud_pub = node.advertise<octomap_msgs::Octomap>("yolocloud/cloud", 1);
         bbox_pub = node.advertise<visualization_msgs::MarkerArray>("yolocloud/box", 1, true);
+        pose_pub = node.advertise<geometry_msgs::PoseStamped>("yolocloud/pose", 1, true);
+        axes_pub = node.advertise<visualization_msgs::MarkerArray>("yolocloud/axes", 1, true);
         //cloudPCLPub = node.advertise<pcl::PointCloud<pcl::PointXYZ>>("yolocloud/cloudpcl", 1);
 #endif
 
@@ -175,9 +179,10 @@ public:
         visualization_msgs::MarkerArray boxes;
         for (int i = 0; i < dets.size(); i++) {
             pcl::PointXYZL point = detectionPositions[i];
-            visualization_msgs::Marker box = extract_bounding_box(point, dets[i].bbox, camToMap, ir_intrinsics);
-            box.id = i;
-            boxes.markers.push_back(box);
+            extract_bounding_box(boxes, point, dets[i].bbox, camToMap, ir_intrinsics);
+            //visualization_msgs::Marker box = extract_bounding_box(point, dets[i].bbox, camToMap, ir_intrinsics);
+            //box.id = i;
+            //boxes.markers.push_back(box);
         }
         bbox_pub.publish(boxes);
 
@@ -206,7 +211,7 @@ public:
     }
 
 
-    visualization_msgs::Marker extract_bounding_box(pcl::PointXYZL &point, cv::Rect &yolobbox, Eigen::Affine3f &camToMap, Eigen::Matrix3f &ir_intrinsics) {
+    void extract_bounding_box(visualization_msgs::MarkerArray &markers, pcl::PointXYZL &point, cv::Rect &yolobbox, Eigen::Affine3f &camToMap, Eigen::Matrix3f &ir_intrinsics) {
         // This gets the min and max of the rough bounding box to look for object points
         // The min and max is cutoff by the true min and max of our Octomap
         double min_bb_x;
@@ -273,7 +278,7 @@ public:
         }
 
         if (objectCloud->points.empty()) {
-            return visualization_msgs::Marker();
+            return;// visualization_msgs::Marker();
         }
 
         // Use Euclidean clustering to filter out noise like objects that are behind our object
@@ -290,7 +295,7 @@ public:
         ec.extract(cluster_indices);
 
         if (cluster_indices.empty()) {
-            return visualization_msgs::Marker();
+            return;// visualization_msgs::Marker();
         }
 
         // TODO: Closest cluster might be better than max...
@@ -325,32 +330,358 @@ public:
 
         pcl::PointXYZ min_point_AABB;
         pcl::PointXYZ max_point_AABB;
+        pcl::PointXYZ min_point_OBB;
+        pcl::PointXYZ max_point_OBB;
+        pcl::PointXYZ position_OBB;
+        Eigen::Matrix3f rotation_matrix_OBB;
+        Eigen::Vector3f major_vector, middle_vector, minor_vector;
 
-        // TODO: Use oriented bbox -- it looks terrible, but it can probably be fixed by constraining the rotation to around Z
         feature_extractor.getAABB(min_point_AABB, max_point_AABB);
+        feature_extractor.getOBB(min_point_OBB, max_point_OBB, position_OBB, rotation_matrix_OBB);
+        feature_extractor.getEigenVectors(major_vector, middle_vector, minor_vector);
+
+        Eigen::Vector3f z = Eigen::Vector3f::UnitZ();
+        std::cout << "==================" << std::endl;
+        std::cout << major_vector.transpose() << "; " << middle_vector.transpose() << "; " << minor_vector.transpose() << std::endl;
+        std::cout << std::abs(z.dot(major_vector)) << "; " << std::abs(z.dot(middle_vector)) << "; " << std::abs(z.dot(minor_vector)) << std::endl;
+
+        Eigen::Vector3f eigenvectors[3] = { major_vector, middle_vector, minor_vector };
+
+        std::pair<float, int> ordering[3] = {
+                std::make_pair(std::abs(z.dot(major_vector)), 0),
+                std::make_pair(std::abs(z.dot(middle_vector)), 1),
+                std::make_pair(std::abs(z.dot(minor_vector)), 2)
+        };
+        std::sort(ordering, ordering+3, [](const std::pair<float, int> &a, const std::pair<float, int> &b) {
+            return a.first < b.first;
+        });
+        Eigen::Vector3f x = Eigen::Vector3f::UnitX();
+        std::pair<float, int> ordering2[3] = {
+                std::make_pair(std::abs(x.dot(major_vector)), 0),
+                std::make_pair(std::abs(x.dot(middle_vector)), 1),
+                std::make_pair(std::abs(x.dot(minor_vector)), 2)
+        };
+        std::sort(ordering2, ordering2+3, [](const std::pair<float, int> &a, const std::pair<float, int> &b) {
+            return a.first < b.first;
+        });
+        Eigen::Vector3f y = Eigen::Vector3f::UnitY();
+        std::pair<float, int> ordering3[3] = {
+                std::make_pair(std::abs(y.dot(major_vector)), 0),
+                std::make_pair(std::abs(y.dot(middle_vector)), 1),
+                std::make_pair(std::abs(y.dot(minor_vector)), 2)
+        };
+        std::sort(ordering3, ordering3+3, [](const std::pair<float, int> &a, const std::pair<float, int> &b) {
+            return a.first < b.first;
+        });
+
+        Eigen::Vector3f grounded_axis(eigenvectors[ordering2[2].second]);
+        grounded_axis(2) = 0.;
+        grounded_axis.normalize();
+        Eigen::Quaternionf rot;
+        rot = Eigen::AngleAxisf(acos(grounded_axis.dot(x)), grounded_axis.cross(x).normalized());
+        rot = rot.inverse();
+        std::cout << "HEEEEEEEEEEEEEEEEEEEE" << (rot*x).transpose() << std::endl;
+
+        Eigen::Vector3f rotation_axis3(rot*eigenvectors[ordering2[2].second]);
+        Eigen::Vector3f grounded_axis3(rot*eigenvectors[ordering3[2].second]);
+        grounded_axis3(2) = 0.;
+        grounded_axis3.normalize();
+        Eigen::Vector3f cc = grounded_axis3 - rotation_axis3 * (grounded_axis3.dot(rotation_axis3));
+        cc.normalize();
+        Eigen::Vector3f dd = (rot*eigenvectors[ordering3[2].second]) - rotation_axis3 * ((rot*eigenvectors[ordering3[2].second]).dot(rotation_axis3));
+        dd.normalize();
+        Eigen::Quaternionf rot3;
+        //rot3 = Eigen::AngleAxisf(acos(grounded_axis3.dot(rot*eigenvectors[ordering3[2].second])), grounded_axis3.cross(rot*eigenvectors[ordering3[2].second]).normalized());
+        rot3 = Eigen::AngleAxisf(acos(cc.dot(dd)), rotation_axis3);
+        rot3 = rot3.inverse();
+
+        //rot = rot3 * rot;
+
+        Eigen::Vector3f rotation_axis(eigenvectors[ordering[0].second]);
+        rotation_axis(2) = 0.;
+        rotation_axis.normalize();
+        Eigen::Vector3f vertical_axis = eigenvectors[ordering[2].second];
+        //Eigen::Quaternionf rot;
+        //rot = Eigen::AngleAxisf(-acos(z.dot(vertical_axis)), z.cross(vertical_axis).normalized());
+        std::cout << (rot * vertical_axis).transpose() << std::endl;
+        Eigen::Vector3f c = z - rotation_axis * (z.dot(rotation_axis));
+        Eigen::Vector3f d = vertical_axis - rotation_axis * (vertical_axis.dot(rotation_axis));
+        std::cout << "------------------------" << std::endl;
+        std::cout << -acos(z.dot(vertical_axis))*180/M_PI << std::endl;
+        std::cout << -acos(c.dot(d) / (c.norm()*d.norm()))*180/M_PI << std::endl;
+        std::cout << "------------------------" << std::endl;
+        //rot = Eigen::AngleAxisf(acos(c.dot(d) / (c.norm()*d.norm())), rotation_axis);
+        //rot = rot.inverse();
+
+        Eigen::Vector3f rotated_evectors[3] = {
+            eigenvectors[ordering[0].second],
+            eigenvectors[ordering[1].second],
+            eigenvectors[ordering[2].second]
+        };
+
+        visualization_msgs::MarkerArray marr;
+        visualization_msgs::Marker m;
+        m.header.frame_id = "map";
+        m.id = 0;
+        m.type = 0;
+        m.scale.x = 0.1;
+        m.scale.y = 0.1;
+        m.scale.z = 0.1;
+        geometry_msgs::Point origin;
+        origin.x = 0;
+        origin.y = 0;
+        origin.z = 0;
+        m.points.push_back(origin);
+        geometry_msgs::Point end;
+        end.x = rotated_evectors[0](0);
+        end.y = rotated_evectors[0](1);
+        end.z = rotated_evectors[0](2);
+        m.points.push_back(end);
+        std_msgs::ColorRGBA col;
+        col.r = 1;
+        col.a = 1;
+        m.color = col;
+        marr.markers.push_back(m);
+        visualization_msgs::Marker m2;
+        m2.header.frame_id = "map";
+        m2.id = 1;
+        m2.type = 0;
+        m2.scale.x = 0.1;
+        m2.scale.y = 0.1;
+        m2.scale.z = 0.1;
+        geometry_msgs::Point origin2;
+        origin2.x = 0;
+        origin2.y = 0;
+        origin2.z = 0;
+        m2.points.push_back(origin2);
+        geometry_msgs::Point end2;
+        end2.x = rotated_evectors[1](0);
+        end2.y = rotated_evectors[1](1);
+        end2.z = rotated_evectors[1](2);
+        m2.points.push_back(end2);
+        std_msgs::ColorRGBA col2;
+        col2.g = 1;
+        col2.a = 1;
+        m2.color = col2;
+        marr.markers.push_back(m2);
+        visualization_msgs::Marker m3;
+        m3.header.frame_id = "map";
+        m3.id = 2;
+        m3.type = 0;
+        m3.scale.x = 0.1;
+        m3.scale.y = 0.1;
+        m3.scale.z = 0.1;
+        geometry_msgs::Point origin3;
+        origin3.x = 0;
+        origin3.y = 0;
+        origin3.z = 0;
+        m3.points.push_back(origin3);
+        geometry_msgs::Point end3;
+        end3.x = rotated_evectors[2](0);
+        end3.y = rotated_evectors[2](1);
+        end3.z = rotated_evectors[2](2);
+        m3.points.push_back(end3);
+        std_msgs::ColorRGBA col3;
+        col3.b = 1;
+        col3.a = 1;
+        m3.color = col3;
+        marr.markers.push_back(m3);
+
+        visualization_msgs::Marker mm;
+        mm.header.frame_id = "arm_lift_link";
+        mm.id = 10;
+        mm.type = 0;
+        mm.scale.x = 0.1;
+        mm.scale.y = 0.1;
+        mm.scale.z = 0.1;
+        geometry_msgs::Point morigin;
+        morigin.x = 0;
+        morigin.y = 0;
+        morigin.z = 0;
+        mm.points.push_back(morigin);
+        geometry_msgs::Point mend;
+        mend.x = (rot*x)(0);
+        mend.y = (rot*x)(1);
+        mend.z = (rot*x)(2);
+        mm.points.push_back(mend);
+        std_msgs::ColorRGBA mcol;
+        mcol.r = 1;
+        mcol.a = 1;
+        mm.color = mcol;
+        marr.markers.push_back(mm);
+        visualization_msgs::Marker mm2;
+        mm2.header.frame_id = "arm_lift_link";
+        mm2.id = 20;
+        mm2.type = 0;
+        mm2.scale.x = 0.1;
+        mm2.scale.y = 0.1;
+        mm2.scale.z = 0.1;
+        geometry_msgs::Point originm2;
+        originm2.x = 0;
+        originm2.y = 0;
+        originm2.z = 0;
+        mm2.points.push_back(originm2);
+        geometry_msgs::Point endm2;
+        endm2.x = (rot*y)(0);
+        endm2.y = (rot*y)(1);
+        endm2.z = (rot*y)(2);
+        mm2.points.push_back(endm2);
+        std_msgs::ColorRGBA colm2;
+        colm2.g = 1;
+        colm2.a = 1;
+        mm2.color = colm2;
+        marr.markers.push_back(mm2);
+        visualization_msgs::Marker mm3;
+        mm3.header.frame_id = "arm_lift_link";
+        mm3.id = 30;
+        mm3.type = 0;
+        mm3.scale.x = 0.1;
+        mm3.scale.y = 0.1;
+        mm3.scale.z = 0.1;
+        geometry_msgs::Point originm3;
+        originm3.x = 0;
+        originm3.y = 0;
+        originm3.z = 0;
+        mm3.points.push_back(originm3);
+        geometry_msgs::Point endm3;
+        endm3.x = (rot*z)(0);
+        endm3.y = (rot*z)(1);
+        endm3.z = (rot*z)(2);
+        mm3.points.push_back(endm3);
+        std_msgs::ColorRGBA colm3;
+        colm3.b = 1;
+        colm3.a = 1;
+        mm3.color = colm3;
+        marr.markers.push_back(mm3);
+
+        axes_pub.publish(marr);
+
+
+        Eigen::Vector3f orig_min_point_OBB(min_point_OBB.x, min_point_OBB.y, min_point_OBB.z);
+        Eigen::Vector3f orig_max_point_OBB(max_point_OBB.x, max_point_OBB.y, max_point_OBB.z);
+        Eigen::Vector3f min_point(0, 0, orig_min_point_OBB(ordering[2].second));
+        Eigen::Vector3f max_point(0, 0, orig_max_point_OBB(ordering[2].second));
+
+        float angle_with_x = acos(Eigen::Vector3f::UnitX().dot(rotated_evectors[0]));
+        float angle_with_y = acos(Eigen::Vector3f::UnitY().dot(rotated_evectors[0]));
+        Eigen::Quaternionf rot2;
+        if (std::abs(angle_with_x) < std::abs(angle_with_y)) {
+            rot2 = Eigen::AngleAxisf(angle_with_x, Eigen::Vector3f::UnitZ());
+            min_point(0) = orig_min_point_OBB(ordering[0].second);
+            min_point(1) = orig_min_point_OBB(ordering[1].second);
+            max_point(0) = orig_max_point_OBB(ordering[0].second);
+            max_point(1) = orig_max_point_OBB(ordering[1].second);
+        } else {
+            rot2 = Eigen::AngleAxisf(angle_with_y, Eigen::Vector3f::UnitZ());
+            min_point(0) = orig_min_point_OBB(ordering[1].second);
+            min_point(1) = orig_min_point_OBB(ordering[0].second);
+            max_point(0) = orig_max_point_OBB(ordering[1].second);
+            max_point(1) = orig_max_point_OBB(ordering[0].second);
+        }
+
+        rot2 = Eigen::AngleAxisf(-acos(Eigen::Vector3f::UnitZ().dot(eigenvectors[ordering[2].second])),
+                                 Eigen::Vector3f::UnitZ().cross(eigenvectors[ordering[2].second]).normalized());
+
+        Eigen::Quaternionf quat_OBB(rotation_matrix_OBB);
+
+        //rot2 = rot2 * quat_OBB;
+        //quat_OBB = quat_OBB * rot2;
+
+        geometry_msgs::PoseStamped ps;
+        ps.header.frame_id = "map";
+        ps.pose.orientation.x = quat_OBB.x();
+        ps.pose.orientation.y = quat_OBB.y();
+        ps.pose.orientation.z = quat_OBB.z();
+        ps.pose.orientation.w = quat_OBB.w();
+        pose_pub.publish(ps);
+
+        std::cout << "==================" << std::endl;
+
+        // We know that the object is perpendicular to the ground
+        auto rpy = rotation_matrix_OBB.eulerAngles(0, 1, 2);
+        std::cout << "rpy: " << rpy(0)*180/M_PI << " " << rpy(1)*180/M_PI << rpy(2)*180/M_PI << std::endl;
+        Eigen::Quaternionf q;
+        q = Eigen::AngleAxisf(0, Eigen::Vector3f::UnitX())
+            * Eigen::AngleAxisf(0, Eigen::Vector3f::UnitY())
+            * Eigen::AngleAxisf(rpy(2), Eigen::Vector3f::UnitZ());
+
+        std::cout << "AABB_min: " <<  min_point_AABB.x << " " << min_point_AABB.y << " " << min_point_AABB.z << std::endl;
+        std::cout << "AABB_max: " <<  max_point_AABB.x << " " << max_point_AABB.y << " " << max_point_AABB.z << std::endl;
+        std::cout << "OBB_min: " <<  min_point_OBB.x << " " << min_point_OBB.y << " " << min_point_OBB.z << std::endl;
+        std::cout << "OBB_max: " <<  max_point_OBB.x << " " << max_point_OBB.y << " " << max_point_OBB.z << std::endl;
+        std::cout << "Position_OBB: " <<  position_OBB.x << " " << position_OBB.y << " " << position_OBB.z << std::endl;
+        Eigen::Vector3f rotated_min = rotation_matrix_OBB * Eigen::Vector3f(min_point_AABB.x, min_point_AABB.y, min_point_AABB.z);
+        Eigen::Vector3f rotated_max = rotation_matrix_OBB * Eigen::Vector3f(max_point_AABB.x, max_point_AABB.y, max_point_AABB.z);
+        std::cout << "AABBRotated_min: " <<  rotated_min << std::endl;
+        std::cout << "AABBRotated_max: " <<  rotated_max << std::endl;
 
         visualization_msgs::Marker marker;
         marker.header.frame_id = "map";
         marker.id = 0;
         marker.type = 1;
         marker.action = 0;
-        marker.pose.position.x = (min_point_AABB.x + max_point_AABB.x) / 2.;
-        marker.pose.position.y = (min_point_AABB.y + max_point_AABB.y) / 2.;
-        marker.pose.position.z = (min_point_AABB.z + max_point_AABB.z) / 2.;
-        marker.pose.orientation.x = 0;
-        marker.pose.orientation.y = 0;
-        marker.pose.orientation.z = 0;
-        marker.pose.orientation.w = 1;
-        marker.scale.x = max_point_AABB.x - min_point_AABB.x;
-        marker.scale.y = max_point_AABB.y - min_point_AABB.y;
-        marker.scale.z = max_point_AABB.z - min_point_AABB.z;
+        //marker.pose.position.x = (min_point_AABB.x + max_point_AABB.x) / 2.;
+        //marker.pose.position.y = (min_point_AABB.y + max_point_AABB.y) / 2.;
+        //marker.pose.position.z = (min_point_AABB.z + max_point_AABB.z) / 2.;
+        marker.pose.position.x = position_OBB.x;
+        marker.pose.position.y = position_OBB.y;
+        marker.pose.position.z = position_OBB.z;
+        //marker.pose.orientation.x = 0;
+        //marker.pose.orientation.y = 0;
+        //marker.pose.orientation.z = 0;
+        //marker.pose.orientation.w = 1;
+        marker.pose.orientation.x = quat_OBB.x();
+        marker.pose.orientation.y = quat_OBB.y();
+        marker.pose.orientation.z = quat_OBB.z();
+        marker.pose.orientation.w = quat_OBB.w();
+        //marker.scale.x = max_point_AABB.x - min_point_AABB.x;
+        //marker.scale.y = max_point_AABB.y - min_point_AABB.y;
+        //marker.scale.z = max_point_AABB.z - min_point_AABB.z;
+        marker.scale.x = max_point_OBB.x - min_point_OBB.x;
+        marker.scale.y = max_point_OBB.y - min_point_OBB.y;
+        marker.scale.z = max_point_OBB.z - min_point_OBB.z;
+        //marker.scale.x = max_point(0) - min_point(0);
+        //marker.scale.y = max_point(1) - min_point(1);
+        //marker.scale.z = max_point(2) - min_point(2);
         marker.color.r = 1.;
         marker.color.b = 0.;
         marker.color.g = 0.;
         marker.color.a = 1.;
         marker.lifetime = ros::Duration(0);
 
-        return marker;
+        visualization_msgs::Marker marker2;
+        marker2.header.frame_id = "map";
+        marker2.id = 1;
+        marker2.type = 1;
+        marker2.action = 0;
+        //marker2.pose.position.x = (min_point_AABB.x + max_point_AABB.x) / 2.;
+        //marker2.pose.position.y = (min_point_AABB.y + max_point_AABB.y) / 2.;
+        //marker2.pose.position.z = (min_point_AABB.z + max_point_AABB.z) / 2.;
+        marker2.pose.position.x = position_OBB.x;
+        marker2.pose.position.y = position_OBB.y;
+        marker2.pose.position.z = position_OBB.z;
+        //marker2.pose.orientation.x = 0;
+        //marker2.pose.orientation.y = 0;
+        //marker2.pose.orientation.z = 0;
+        //marker2.pose.orientation.w = 1;
+        marker2.pose.orientation.x = rot2.x();
+        marker2.pose.orientation.y = rot2.y();
+        marker2.pose.orientation.z = rot2.z();
+        marker2.pose.orientation.w = rot2.w();
+        //marker2.scale.x = max_point_AABB.x - min_point_AABB.x;
+        //marker2.scale.y = max_point_AABB.y - min_point_AABB.y;
+        //marker2.scale.z = max_point_AABB.z - min_point_AABB.z;
+        marker2.scale.x = max_point(0) - min_point(0);
+        marker2.scale.y = max_point(1) - min_point(1);
+        marker2.scale.z = max_point(2) - min_point(2);
+        marker2.color.r = 0.;
+        marker2.color.b = 0.;
+        marker2.color.g = 1.;
+        marker2.color.a = 1.;
+        marker2.lifetime = ros::Duration(0);
+
+        markers.markers.push_back(marker);
+        //markers.markers.push_back(marker2);
     }
 
 
