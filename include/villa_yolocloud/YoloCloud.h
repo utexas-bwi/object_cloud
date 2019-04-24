@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <map>
 #include <algorithm>
+#include <visualization_msgs/Marker.h>
 #include <opencv/cv.h>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
@@ -40,6 +41,7 @@ private:
 
 public:
     octomap::OcTree octree;
+
     YoloCloud()
         : octree(0.01) {
     }
@@ -47,5 +49,7 @@ public:
     std::pair<bool, YoloCloudObject> addObject(const ImageBoundingBox &bbox, const cv::Mat &rgb_image, const cv::Mat &depth_image, const Eigen::Affine3f &camToMap);
 
     std::vector<YoloCloudObject> getAllObjects();
+
+    visualization_msgs::Marker extractBoundingBox(octomap::point3d &point, cv::Rect &yolobbox, Eigen::Affine3f &camToMap, Eigen::Matrix3f &ir_intrinsics);
 
 };
