@@ -10,6 +10,7 @@
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <geometry_msgs/Point.h>
+#include <nav_msgs/Odometry.h>
 
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -36,7 +37,8 @@
 #define VISUALIZE true
 
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
-                                                        sensor_msgs::Image> SyncPolicy;
+                                                        sensor_msgs::Image,
+                                                        nav_msgs::Odometry> SyncPolicy;
 
 
 class YoloCloudNode {
@@ -84,7 +86,8 @@ public:
     }
 
     void data_callback(const sensor_msgs::Image::ConstPtr &rgb_image,
-                       const sensor_msgs::Image::ConstPtr &depth_image) {
+                       const sensor_msgs::Image::ConstPtr &depth_image,
+                       const nav_msgs::Odometry::ConstPtr &odom) {
         octomap::OcTree &octree = yoloCloud.octree;
         received_first_message = true;
         cv_bridge::CvImagePtr cv_ptr;
@@ -122,11 +125,20 @@ public:
             return;
         }
 
+        if (Eigen::Vector3f(odom->twist.twist.linear.x,
+                            odom->twist.twist.linear.y,
+                            odom->twist.twist.linear.z).norm() > 0.05 ||
+            Eigen::Vector3f(odom->twist.twist.angular.x,
+                            odom->twist.twist.angular.y,
+                            odom->twist.twist.angular.z).norm() > 0.05) {
+            return;
+        }
+
         // Parts of the depth image that have YOLO objects
         // This will be useful for constructing a region-of-interest Point Cloud
         cv::Mat depthMasked = cv::Mat::zeros(depth_image->height, depth_image->width, CV_16UC1);
 
-        std::vector<octomap::point3d> detectionPositions;
+        std::vector<std::pair<Detection, octomap::point3d>> detectionPositions;
         for (const auto &detection : dets) {
             ImageBoundingBox bbox;
             bbox.x = detection.bbox.x;
@@ -134,6 +146,12 @@ public:
             bbox.width = detection.bbox.width;
             bbox.height = detection.bbox.height;
             bbox.label = detection.label;
+
+            // If the bounding box is at the edge of the image, ignore it
+            if (bbox.x == 0 || bbox.x + bbox.width >= cv_ptr->image.cols
+                || bbox.y == 0 || bbox.y + bbox.height >= cv_ptr->image.rows) {
+                continue;
+            }
 
             // 10 pixel buffer
             int min_x = std::max(0, detection.bbox.x - 10);
@@ -144,7 +162,9 @@ public:
             depthI(region).copyTo(depthMasked(region));
 
             std::pair<bool, YoloCloudObject> ret = yoloCloud.addObject(bbox, cv_ptr->image, depthI, camToMap);
-            detectionPositions.push_back(ret.second.position);
+            if (!ret.second.invalid()) {
+                detectionPositions.emplace_back(detection, ret.second.position);
+            }
 
             // If object was added to yolocloud, add to knowledge base
             bool newObj = ret.first;
@@ -167,9 +187,10 @@ public:
                                 true);   // Discretize speeds it up by approximating
 
         // Bounding box
-        for (int i = 0; i < dets.size(); i++) {
-            octomap::point3d point = detectionPositions[i];
-            visualization_msgs::Marker box = yoloCloud.extractBoundingBox(point, dets[i].bbox, camToMap, ir_intrinsics);
+        for (const auto &d : detectionPositions) {
+            octomap::point3d point = d.second;
+            cv::Rect bbox = d.first.bbox;
+            visualization_msgs::Marker box = yoloCloud.extractBoundingBox(point, bbox, camToMap, ir_intrinsics);
 
             // Invalid box
             if (box.header.frame_id.empty()) {
@@ -280,11 +301,12 @@ public:
 
     void visualize() {
         visualization_msgs::MarkerArray yolo_marker_array;
+        int id = 0;
         for (const auto &object : yoloCloud.getAllObjects()) {
             visualization_msgs::Marker marker;
             marker.header.frame_id = "map";
             marker.ns = object.label;
-            marker.id = 0;
+            marker.id = id;
             marker.type = 1;
             marker.action = 0;
             marker.pose.position.x = object.position.x();
@@ -306,7 +328,7 @@ public:
             visualization_msgs::Marker text_marker;
             text_marker.header.frame_id = "map";
             text_marker.ns = object.label;
-            text_marker.id = 1;
+            text_marker.id = id++;
             text_marker.type = 9;
             text_marker.text = object.label;
             text_marker.action = 0;
@@ -356,8 +378,9 @@ int main (int argc, char **argv) {
     image_transport::SubscriberFilter depth_sub(yc_node.it,
                                                 "/hsrb/head_rgbd_sensor/depth_registered/image_rect_raw",
                                                 10);
-    message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(10), image_sub, depth_sub);
-    sync.registerCallback(boost::bind(&YoloCloudNode::data_callback, &yc_node, _1, _2));
+    message_filters::Subscriber<nav_msgs::Odometry> odom_sub(n, "/hsrb/odom", 30);
+    message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(10), image_sub, depth_sub, odom_sub);
+    sync.registerCallback(boost::bind(&YoloCloudNode::data_callback, &yc_node, _1, _2, _3));
 
     ROS_INFO("Started. Waiting for inputs.");
     while (ros::ok() && !yc_node.received_first_message) {

@@ -10,7 +10,9 @@
 using namespace cv;
 using namespace std;
 
-const float NEIGHBOR_THRESH = 0.1;
+const float NEIGHBOR_THRESH_X = 0.2;
+const float NEIGHBOR_THRESH_Y = 0.2;
+const float NEIGHBOR_THRESH_Z = 0.3;
 
 /*
  * Adds object
@@ -45,8 +47,8 @@ pair<bool, YoloCloudObject> YoloCloud::addObject(const ImageBoundingBox &bbox,
 
     // Check if point exists in octomap
     octomap::point3d point(0, 0, 0);
-    octomap::point3d min(world(0) - NEIGHBOR_THRESH, world(1) - NEIGHBOR_THRESH, world(2) - NEIGHBOR_THRESH);
-    octomap::point3d max(world(0) + NEIGHBOR_THRESH, world(1) + NEIGHBOR_THRESH, world(2) + NEIGHBOR_THRESH);
+    octomap::point3d min(world(0) - NEIGHBOR_THRESH_X, world(1) - NEIGHBOR_THRESH_Y, world(2) - NEIGHBOR_THRESH_Z);
+    octomap::point3d max(world(0) + NEIGHBOR_THRESH_X, world(1) + NEIGHBOR_THRESH_Y, world(2) + NEIGHBOR_THRESH_Z);
     for (octomap::OcTree::leaf_bbx_iterator iter = octree.begin_leafs_bbx(min, max),
              end=octree.end_leafs_bbx(); iter != end; ++iter) {
         if (iter->getOccupancy() >= octree.getOccupancyThres()) {
