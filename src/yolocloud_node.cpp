@@ -167,7 +167,9 @@ public:
         // Insert ROI PointCloud into Octree
         octree.insertPointCloud(cloud,
                                 octomap::point3d(0, 0, 0),
-                                2);  // Max range of 2. This isn't meters, I don't know wtf this is.
+                                2,       // Max range of 2. This isn't meters, I don't know wtf this is.
+                                false,   // We don't want lazy updates
+                                true);   // Discretize speeds it up by approximating
 
         // Bounding box
         visualization_msgs::MarkerArray boxes;
@@ -513,7 +515,7 @@ int main (int argc, char **argv) {
 
     ROS_INFO("Started. Waiting for inputs.");
     while (ros::ok() && !yc_node.received_first_message) {
-        ROS_WARN_THROTTLE(2, "Waiting for image, depth and detections messages...");
+        ROS_WARN_THROTTLE(2, "Waiting for image and depth messages...");
         ros::spinOnce();
     }
 
