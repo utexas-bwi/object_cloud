@@ -33,7 +33,8 @@ octomap::Pointcloud PointCloudConstructor::construct(const Matrix3f &ir_intrinsi
             float depth = row[x] / 1000.;
 
             // Analytic solution to intrinsics^-1(point) * depth
-            // Eigen is column major order, so *4 is column size
+            // The * depth is so we pick the right representative from our equivalence class
+            // Eigen is column major order, so *3 is column size
             pointsData[valid_points*3 + 0] =
                     (x - x_c) * (1.0 / sx) * depth;
             pointsData[valid_points*3 + 1] =

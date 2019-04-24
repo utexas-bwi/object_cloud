@@ -52,8 +52,7 @@ private:
     YoloCloud yoloCloud;
     tf2_ros::Buffer tfBuffer;
     tf2_ros::TransformListener tfListener;
-    std::unordered_map<int, int> entity_id_to_point;
-    octomap::OcTree octree;
+    std::unordered_map<int, octomap::point3d> entity_id_to_points;
     knowledge_rep::LongTermMemoryConduit ltmc; // Knowledge base
 
 
@@ -72,7 +71,6 @@ public:
     YoloCloudNode(ros::NodeHandle node)
         : tfListener(tfBuffer),
           it(node),
-          octree(0.01),
           ltmc(knowledge_rep::get_default_ltmc()) {
 
 #ifdef VISUALIZE
@@ -95,6 +93,7 @@ public:
 
     void data_callback(const sensor_msgs::Image::ConstPtr &rgb_image,
                        const sensor_msgs::Image::ConstPtr &depth_image) {
+        octomap::OcTree &octree = yoloCloud.octree;
         received_first_message = true;
         cv_bridge::CvImagePtr cv_ptr;
         try {
@@ -132,7 +131,7 @@ public:
         // This will be useful for constructing a region-of-interest Point Cloud
         cv::Mat depthMasked = cv::Mat::zeros(depth_image->height, depth_image->width, CV_16UC1);
 
-        std::vector<pcl::PointXYZL> detectionPositions;
+        std::vector<octomap::point3d> detectionPositions;
         for (const auto &detection : dets) {
             ImageBoundingBox bbox;
             bbox.x = detection.bbox.x;
@@ -149,13 +148,13 @@ public:
             cv::Rect region(min_x, min_y, max_x - min_x, max_y - min_y);
             depthI(region).copyTo(depthMasked(region));
 
-            std::pair<int, pcl::PointXYZL> ret = yoloCloud.addObject(bbox, cv_ptr->image, depthI, camToMap);
-            detectionPositions.push_back(ret.second);
+            std::pair<bool, YoloCloudObject> ret = yoloCloud.addObject(bbox, cv_ptr->image, depthI, camToMap);
+            detectionPositions.push_back(ret.second.position);
 
             // If object was added to yolocloud, add to knowledge base
-            int idx = ret.first;
-            if (idx >= 0) {
-                add_to_ltmc(idx);
+            bool newObj = ret.first;
+            if (newObj) {
+                add_to_ltmc(ret.second);
             }
         }
 
@@ -173,7 +172,7 @@ public:
         // Bounding box
         visualization_msgs::MarkerArray boxes;
         for (int i = 0; i < dets.size(); i++) {
-            pcl::PointXYZL point = detectionPositions[i];
+            octomap::point3d point = detectionPositions[i];
             visualization_msgs::Marker box = extract_bounding_box(point, dets[i].bbox, camToMap, ir_intrinsics);
             box.id = i;
             boxes.markers.push_back(box);
@@ -205,7 +204,8 @@ public:
     }
 
 
-    visualization_msgs::Marker extract_bounding_box(pcl::PointXYZL &point, cv::Rect &yolobbox, Eigen::Affine3f &camToMap, Eigen::Matrix3f &ir_intrinsics) {
+    visualization_msgs::Marker extract_bounding_box(octomap::point3d &point, cv::Rect &yolobbox, Eigen::Affine3f &camToMap, Eigen::Matrix3f &ir_intrinsics) {
+        octomap::OcTree &octree = yoloCloud.octree;
         // This gets the min and max of the rough bounding box to look for object points
         // The min and max is cutoff by the true min and max of our Octomap
         double min_bb_x;
@@ -216,12 +216,12 @@ public:
         double max_bb_z;
         octree.getMetricMin(min_bb_x, min_bb_y, min_bb_z);
         octree.getMetricMax(max_bb_x, max_bb_y, max_bb_z);
-        min_bb_x = std::max(min_bb_x, point.x - 0.2);
-        min_bb_y = std::max(min_bb_y, point.y - 0.2);
-        min_bb_z = std::max(min_bb_z, point.z - 0.3);
-        max_bb_x = std::min(max_bb_x, point.x + 0.2);
-        max_bb_y = std::min(max_bb_y, point.y + 0.2);
-        max_bb_z = std::min(max_bb_z, point.z + 0.3);
+        min_bb_x = std::max(min_bb_x, point.x() - 0.2);
+        min_bb_y = std::max(min_bb_y, point.y() - 0.2);
+        min_bb_z = std::max(min_bb_z, point.z() - 0.3);
+        max_bb_x = std::min(max_bb_x, point.x() + 0.2);
+        max_bb_y = std::min(max_bb_y, point.y() + 0.2);
+        max_bb_z = std::min(max_bb_z, point.z() + 0.3);
         octomap::point3d min(min_bb_x, min_bb_y, min_bb_z);
         octomap::point3d max(max_bb_x, max_bb_y, max_bb_z);
 
@@ -394,33 +394,31 @@ public:
     }
 
 
-    void add_to_ltmc(int cloud_idx) {
-        std::string label = yoloCloud.labels.at(yoloCloud.objects->points[cloud_idx].label);
-        auto concept = ltmc.get_concept(label);
+    void add_to_ltmc(const YoloCloudObject &object) {
+        auto concept = ltmc.get_concept(object.label);
         auto entity = concept.create_instance();
         auto sensed = ltmc.get_concept("sensed");
         entity.make_instance_of(sensed);
-        entity_id_to_point.insert({entity.entity_id, cloud_idx});
+        entity_id_to_points.insert({entity.entity_id, object.position});
     }
 
 
     bool get_entities(villa_yolocloud::GetEntities::Request &req, villa_yolocloud::GetEntities::Response &res) {
         std::vector<geometry_msgs::Point> map_locations;
         for (int eid : req.entity_ids) {
-            auto points = yoloCloud.objects->points;
             geometry_msgs::Point p;
             // Requested an ID that's not in the cloud. Return NANs
-            if (entity_id_to_point.count(eid) == 0) {
+            if (entity_id_to_points.count(eid) == 0) {
                 knowledge_rep::Entity entity = {eid, ltmc};
                 entity.remove_attribute("sensed");
                 p.x = NAN;
                 p.y = NAN;
                 p.z = NAN;
             } else {
-                pcl::PointXYZL point = yoloCloud.objects->points[entity_id_to_point.at(eid)];
-                p.x = point.x;
-                p.y = point.y;
-                p.z = point.z;
+                octomap::point3d point = entity_id_to_points.at(eid);
+                p.x = point.x();
+                p.y = point.y();
+                p.z = point.z();
             }
 
             map_locations.push_back(p);
@@ -434,16 +432,16 @@ public:
 
     void visualize() {
         visualization_msgs::MarkerArray yolo_marker_array;
-        for (const auto &object : yoloCloud.objects->points) {
+        for (const auto &object : yoloCloud.getAllObjects()) {
             visualization_msgs::Marker marker;
             marker.header.frame_id = "map";
-            marker.ns = yoloCloud.labels.at(object.label);
+            marker.ns = object.label;
             marker.id = 0;
             marker.type = 1;
             marker.action = 0;
-            marker.pose.position.x = object.x;
-            marker.pose.position.y = object.y;
-            marker.pose.position.z = object.z;
+            marker.pose.position.x = object.position.x();
+            marker.pose.position.y = object.position.y();
+            marker.pose.position.z = object.position.z();
             marker.pose.orientation.x = 0.;
             marker.pose.orientation.y = 0.;
             marker.pose.orientation.z = 0.;
@@ -459,14 +457,14 @@ public:
 
             visualization_msgs::Marker text_marker;
             text_marker.header.frame_id = "map";
-            text_marker.ns = yoloCloud.labels.at(object.label);
+            text_marker.ns = object.label;
             text_marker.id = 1;
             text_marker.type = 9;
-            text_marker.text = yoloCloud.labels.at(object.label);
+            text_marker.text = object.label;
             text_marker.action = 0;
-            text_marker.pose.position.x = object.x;
-            text_marker.pose.position.y = object.y;
-            text_marker.pose.position.z = object.z + 0.10;
+            text_marker.pose.position.x = object.position.x();
+            text_marker.pose.position.y = object.position.y();
+            text_marker.pose.position.z = object.position.z() + 0.10;
             text_marker.pose.orientation.x = 0.;
             text_marker.pose.orientation.y = 0.;
             text_marker.pose.orientation.z = 0.;

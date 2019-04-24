@@ -1,5 +1,4 @@
-#ifndef DETECTIONMODEL_H
-#define DETECTIONMODEL_H
+#pragma once
 
 #include <string>
 #include <iostream>
@@ -48,5 +47,3 @@ public:
 
     ~YoloModel();
 };
-
-#endif // DETECTIONMODEL_H

@@ -9,9 +9,9 @@ const float NEIGHBOR_THRESH = 0.1;
 
 /*
  * Adds object
- * Returns index in point cloud or -1 if not added
+ * Returns (new object?, 3D point)
  */
-std::pair<int, pcl::PointXYZL> YoloCloud::addObject(const ImageBoundingBox &bbox,
+pair<bool, YoloCloudObject> YoloCloud::addObject(const ImageBoundingBox &bbox,
                                                     const Mat &rgb_image,
                                                     const Mat &depth_image,
                                                     const Eigen::Affine3f &camToMap) {
@@ -22,87 +22,12 @@ std::pair<int, pcl::PointXYZL> YoloCloud::addObject(const ImageBoundingBox &bbox
         //std::cout << bbox.width << std::endl;
         //std::cout << bbox.height << std::endl;
         //throw std::runtime_error("Invalid bbox");
-        return std::make_pair(-1, pcl::PointXYZL());
+        return make_pair(false, YoloCloudObject());
     }
-
-    // define bounding rectangle
-    Rect rect(bbox.x, bbox.y, bbox.width, bbox.height);
-
-    Mat mask; // segmentation result (4 possible values)
-    Mat bgModel, fgModel; // the models (internally used)
-
-    // TODO: GrabCut makes this go at like 5fps
-    // So just take the depth at the center
-    // Otherwise, a segmentation network would be about as fast
-/*
-    // GrabCut segmentation
-    grabCut(rgb_image,    // input image
-                mask,   // segmentation result
-                rect,// rectangle containing foreground 
-                bgModel, fgModel, // models
-                1,        // number of iterations
-                GC_INIT_WITH_RECT); // use rectangle
-
-#ifdef DEBUG
-    Mat image_mask(mask.size(), CV_8UC1);
-    compare(mask, GC_PR_FGD, image_mask, CMP_EQ);
-    Mat foreground(rgb_image.size(), CV_8UC3, Scalar(255,255,255));
-    rgb_image.copyTo(foreground, image_mask);
-
-    // draw rectangle on original image
-    Mat image(rgb_image.size(), CV_8UC3);
-    rgb_image.copyTo(image);
-    cv::rectangle(image, rect, Scalar(255,255,255), 1);
-    namedWindow("Image");
-    imshow("Image", image);
-
-    // display result
-    namedWindow("Segmented Image");
-    imshow("Segmented Image", foreground);
-
-    waitKey(0);
-#endif
-
-    float depth = 0.;
-    int count = 0;
-    for (size_t y = bbox.y; y < bbox.y + bbox.height; y++) {
-        for (size_t x = bbox.x; x < bbox.x + bbox.width; x++) {
-            uint8_t mask_val = mask.at<uint8_t>(y, x);
-            float cur_depth = depth_image.at<float>(y, x);
-            if (cur_depth != 0 && !isnan(cur_depth) && (mask_val == GC_PR_FGD || mask_val == GC_FGD)) {
-                depth += cur_depth;
-                count++;
-            }
-        }
-    }
-    depth /= count;
-
-    // No valid depth, so return
-    if (count == 0) {
-        return -1;
-    }
-
-    // If center is closer, then just take it
-    float depthCenter = depth_image.at<float>(bbox.y + bbox.height/2., bbox.x + bbox.width/2.);
-    if (depthCenter != 0 && !isnan(depthCenter) && depthCenter < depth) {
-        depth = depthCenter;
-    }
-*/
 
     float depth = depth_image.at<uint16_t>(bbox.y + bbox.height/2., bbox.x + bbox.width/2.) / 1000.;
     if (depth == 0 || isnan(depth)) {
-        return std::make_pair(-1, pcl::PointXYZL());
-    }
-
-    // If the label does not yet exist, add it
-    auto it = labels_to_id.find(bbox.label);
-    uint32_t id;
-    if (it == labels_to_id.end()) {
-        id = labels.size();
-        labels_to_id.insert({bbox.label, id});
-        labels.push_back(bbox.label);
-    } else {
-        id = it->second;
+        return make_pair(false, YoloCloudObject());
     }
 
     // Compute 3d point in the world
@@ -113,51 +38,52 @@ std::pair<int, pcl::PointXYZL> YoloCloud::addObject(const ImageBoundingBox &bbox
     float camera_z = depth;
     Eigen::Vector3f world = camToMap * Eigen::Vector3f(camera_x, camera_y, camera_z);
 
-    pcl::PointXYZL point;
-    point.x = world(0);
-    point.y = world(1);
-    point.z = world(2);
-    point.label = id;
+    // Check if point exists in octomap
+    octomap::point3d point(0, 0, 0);
+    octomap::point3d min(world(0) - NEIGHBOR_THRESH, world(1) - NEIGHBOR_THRESH, world(2) - NEIGHBOR_THRESH);
+    octomap::point3d max(world(0) + NEIGHBOR_THRESH, world(1) + NEIGHBOR_THRESH, world(2) + NEIGHBOR_THRESH);
+    for (octomap::OcTree::leaf_bbx_iterator iter = octree.begin_leafs_bbx(min, max),
+             end=octree.end_leafs_bbx(); iter != end; ++iter) {
+        if (iter->getOccupancy() >= octree.getOccupancyThres()) {
+            auto p = objectsData.find(iter.getKey());
 
-    if (!objects->points.empty()) {
-        // Check if point already exists (or close enough one already exists)
-        pcl::KdTree<pcl::PointXYZL>::Ptr tree(new pcl::KdTreeFLANN<pcl::PointXYZL>);
-        tree->setInputCloud(objects);
-        std::vector<int> nn_indices(1);
-        std::vector<float> nn_dists(1);
-        if (objects->size() > 0
-            && tree->nearestKSearch(point, 1, nn_indices, nn_dists)) {
-            if (objects->points[nn_indices[0]].label == point.label && nn_dists[0] <= NEIGHBOR_THRESH) {
-                // We don't want to add this as it is probably a duplicate
-                return std::make_pair(-1, objects->points[nn_indices[0]]);
+            if (p != objectsData.end()) {
+
+                // Is this point already marked as belonging to our object?
+                if (p->second.label == bbox.label) {
+
+                    // We don't want to add this as it is probably a duplicate
+                    return make_pair(false, p->second);
+                }
+
+            } else {
+                point = iter.getCoordinate();
             }
         }
     }
 
-    objects->push_back(point);
-    return std::make_pair(objects->size() - 1, point);
+    // If point was never set then return
+    if (point == octomap::point3d(0, 0, 0)) {
+        return std::make_pair(false, YoloCloudObject());
+    }
+
+    // If it doesn't exist, we can add it to our dictionary
+    octomap::OcTreeKey key = octree.coordToKey(point);
+    YoloCloudObject object;
+    object.position = point;
+    object.label = bbox.label;
+    objectsData.insert({key, object});
+
+    return std::make_pair(true, object);
 }
 
-pcl::PointCloud<pcl::PointXYZL>::Ptr YoloCloud::sliceCloud(float x_min, float x_max,
-                 float y_min, float y_max,
-                 float z_min, float z_max) {
-    pcl::PointCloud<pcl::PointXYZL>::Ptr cloud_filtered(new pcl::PointCloud<pcl::PointXYZL>);
-    pcl::PassThrough<pcl::PointXYZL> pass;
+vector<YoloCloudObject> YoloCloud::getAllObjects() {
+    vector<YoloCloudObject> objects;
+    objects.reserve(objectsData.size());
 
-    pass.setInputCloud(objects);
-    pass.setFilterFieldName("x");
-    pass.setFilterLimits(x_min, x_max);
-    pass.filter(*cloud_filtered);
+    for (const auto &e : objectsData) {
+        objects.push_back(e.second);
+    }
 
-    pass.setInputCloud(cloud_filtered);
-    pass.setFilterFieldName("y");
-    pass.setFilterLimits(y_min, y_max);
-    pass.filter(*cloud_filtered);
-
-    pass.setFilterFieldName("z");
-    pass.setFilterLimits(z_min, z_max);
-    pass.filter(*cloud_filtered);
-
-    return cloud_filtered;
+    return objects;
 }
-

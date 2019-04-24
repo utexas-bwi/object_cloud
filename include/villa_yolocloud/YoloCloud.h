@@ -1,5 +1,4 @@
-#ifndef YOLOCLOUD_H
-#define YOLOCLOUD_H
+#pragma once
 
 #include <string>
 #include <iostream>
@@ -9,8 +8,7 @@
 #include <opencv/cv.h>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
+#include <octomap/octomap.h>
 #include <Eigen/Dense>
 
 struct ImageBoundingBox {
@@ -21,6 +19,15 @@ struct ImageBoundingBox {
     std::string label;
 };
 
+struct YoloCloudObject {
+    octomap::point3d position;
+    std::string label;
+
+    bool invalid() {
+        return label.empty();
+    }
+};
+
 class YoloCloud {
 private:
     // Hardcoded intrinsic parameters for the HSR xtion
@@ -29,19 +36,16 @@ private:
     float intrinsic_cx = 320.0000000000;
     float intrinsic_cy = 240.0000000000;
 
-public:
-    pcl::PointCloud<pcl::PointXYZL>::Ptr objects;
-    std::vector<std::string> labels;
-    std::map<std::string, uint32_t> labels_to_id;
+    std::unordered_map<octomap::OcTreeKey, YoloCloudObject, octomap::OcTreeKey::KeyHash> objectsData;
 
+public:
+    octomap::OcTree octree;
     YoloCloud()
-        : objects(new pcl::PointCloud<pcl::PointXYZL>) {
+        : octree(0.01) {
     }
 
-    std::pair<int, pcl::PointXYZL> addObject(const ImageBoundingBox &bbox, const cv::Mat &rgb_image, const cv::Mat &depth_image, const Eigen::Affine3f &camToMap);
+    std::pair<bool, YoloCloudObject> addObject(const ImageBoundingBox &bbox, const cv::Mat &rgb_image, const cv::Mat &depth_image, const Eigen::Affine3f &camToMap);
 
-    pcl::PointCloud<pcl::PointXYZL>::Ptr sliceCloud(float x_min, float x_max, float y_min, float y_max, float z_min, float z_max);
+    std::vector<YoloCloudObject> getAllObjects();
 
 };
-
-#endif // YOLOCLOUD_H
