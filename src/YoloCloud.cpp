@@ -280,3 +280,21 @@ visualization_msgs::Marker YoloCloud::extractBoundingBox(octomap::point3d &point
 
     return marker;
 }
+
+
+vector<YoloCloudObject> YoloCloud::searchBox(octomap::point3d min, octomap::point3d max) {
+    vector<YoloCloudObject> objects;
+
+    for (octomap::OcTree::leaf_bbx_iterator iter = octree.begin_leafs_bbx(min, max),
+             end=octree.end_leafs_bbx(); iter != end; ++iter) {
+        if (iter->getOccupancy() >= octree.getOccupancyThres()) {
+            auto p = objectsData.find(iter.getKey());
+
+            if (p != objectsData.end()) {
+                objects.push_back(p->second);
+            }
+        }
+    }
+
+    return objects;
+}

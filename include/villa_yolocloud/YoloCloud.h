@@ -52,4 +52,6 @@ public:
 
     visualization_msgs::Marker extractBoundingBox(octomap::point3d &point, cv::Rect &yolobbox, Eigen::Affine3f &camToMap, Eigen::Matrix3f &ir_intrinsics);
 
+    std::vector<YoloCloudObject> searchBox(octomap::point3d min, octomap::point3d max);
+
 };

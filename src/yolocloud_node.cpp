@@ -23,8 +23,8 @@
 #include <knowledge_representation/LTMCInstance.h>
 #include <villa_yolocloud/YoloCloud.h>
 #include <villa_yolocloud/DetectedObject.h>
-#include <villa_yolocloud/GetShelfObjects.h>
 #include <villa_yolocloud/GetEntities.h>
+#include <villa_yolocloud/GetBoundingBoxes.h>
 #include <villa_yolocloud/YoloModel.h>
 #include <villa_yolocloud/PointCloudConstructor.h>
 #include <octomap_msgs/Octomap.h>
@@ -257,6 +257,26 @@ public:
     }
 
 
+    bool get_bounding_boxes(villa_yolocloud::GetBoundingBoxes::Request &req, villa_yolocloud::GetBoundingBoxes::Response &res) {
+        octomap::point3d min(req.min.x, req.min.y, req.min.z);
+        octomap::point3d max(req.max.x, req.max.y, req.max.z);
+        std::vector<YoloCloudObject> objects = yoloCloud.searchBox(min, max);
+
+        visualization_msgs::MarkerArray boxes;
+        for (const auto &object : objects) {
+            auto mit = bounding_boxes.find(yoloCloud.octree.coordToKey(object.position));
+
+            if (mit != bounding_boxes.end()) {
+                boxes.markers.push_back(mit->second);
+            }
+        }
+
+        res.bounding_boxes = boxes;
+
+        return true;
+    }
+
+
     void visualize() {
         visualization_msgs::MarkerArray yolo_marker_array;
         for (const auto &object : yoloCloud.getAllObjects()) {
@@ -345,6 +365,7 @@ int main (int argc, char **argv) {
     }
 
     ros::ServiceServer getEntities = n.advertiseService("getEntities", &YoloCloudNode::get_entities, &yc_node);
+    ros::ServiceServer getBoundingBoxes = n.advertiseService("getBoundingBoxes", &YoloCloudNode::get_bounding_boxes, &yc_node);
 
     ros::spin();
     return 0;

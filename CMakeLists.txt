@@ -67,7 +67,7 @@ add_message_files(
 add_service_files(
     FILES
     GetEntities.srv
-    GetShelfObjects.srv
+    GetBoundingBoxes.srv
 )
 
 generate_messages(
