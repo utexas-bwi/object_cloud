@@ -176,9 +176,10 @@ public:
                 continue;
             }
 
-            auto mit = bounding_boxes.find(yoloCloud.octree.coordToKey(point));
+            auto key = yoloCloud.octree.coordToKey(point);
+            auto mit = bounding_boxes.find(key);
             if (mit != bounding_boxes.end()) {
-                mit->second = box;
+                bounding_boxes.at(key) = box;
             } else {
                 bounding_boxes.insert({yoloCloud.octree.coordToKey(point), box});
             }
