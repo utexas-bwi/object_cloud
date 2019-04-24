@@ -1,0 +1,5 @@
+# min and max points of the box to search in
+geometry_msgs/Point min
+geometry_msgs/Point max
+---
+visualization_msgs/MarkerArray bounding_boxes
