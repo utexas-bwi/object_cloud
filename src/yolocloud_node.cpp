@@ -28,6 +28,7 @@
 #include <villa_yolocloud/GetBoundingBoxes.h>
 #include <villa_yolocloud/YoloModel.h>
 #include <villa_yolocloud/PointCloudConstructor.h>
+#include <villa_yolocloud/OctreeUtils.h>
 #include <octomap_msgs/Octomap.h>
 #include <octomap_msgs/conversions.h>
 #include <octomap_ros/conversions.h>
@@ -46,8 +47,9 @@ private:
     YoloCloud yoloCloud;
     tf2_ros::Buffer tfBuffer;
     tf2_ros::TransformListener tfListener;
-    std::unordered_map<int, octomap::point3d> entity_id_to_points;
-    std::unordered_map<octomap::OcTreeKey, visualization_msgs::Marker, octomap::OcTreeKey::KeyHash> bounding_boxes;
+    octomap::OcTree octree;
+    std::unordered_map<int, YoloCloudObject> entity_id_to_object;
+    std::unordered_map<int, visualization_msgs::Marker> bounding_boxes;
     knowledge_rep::LongTermMemoryConduit ltmc; // Knowledge base
 
 
@@ -66,6 +68,7 @@ public:
     YoloCloudNode(ros::NodeHandle node)
         : tfListener(tfBuffer),
           it(node),
+          octree(0.01),
           ltmc(knowledge_rep::get_default_ltmc()) {
 
 #ifdef VISUALIZE
@@ -88,7 +91,6 @@ public:
     void data_callback(const sensor_msgs::Image::ConstPtr &rgb_image,
                        const sensor_msgs::Image::ConstPtr &depth_image,
                        const nav_msgs::Odometry::ConstPtr &odom) {
-        octomap::OcTree &octree = yoloCloud.octree;
         received_first_message = true;
         cv_bridge::CvImagePtr cv_ptr;
         try {
@@ -116,8 +118,6 @@ public:
         // Record start time
         auto start = std::chrono::high_resolution_clock::now();
 
-        // TODO: Octomap gets confused by partial views of objects
-        // We could check if the bounding box touches the border of the image to prevent this
         std::vector<Detection> dets = model.detect(&cv_ptr->image);
 
         // Quit if there are no YOLO detections
@@ -125,20 +125,11 @@ public:
             return;
         }
 
-        if (Eigen::Vector3f(odom->twist.twist.linear.x,
-                            odom->twist.twist.linear.y,
-                            odom->twist.twist.linear.z).norm() > 0.05 ||
-            Eigen::Vector3f(odom->twist.twist.angular.x,
-                            odom->twist.twist.angular.y,
-                            odom->twist.twist.angular.z).norm() > 0.05) {
-            return;
-        }
-
         // Parts of the depth image that have YOLO objects
         // This will be useful for constructing a region-of-interest Point Cloud
         cv::Mat depthMasked = cv::Mat::zeros(depth_image->height, depth_image->width, CV_16UC1);
 
-        std::vector<std::pair<Detection, octomap::point3d>> detectionPositions;
+        std::vector<std::pair<Detection, YoloCloudObject>> detectionPositions;
         for (const auto &detection : dets) {
             ImageBoundingBox bbox;
             bbox.x = detection.bbox.x;
@@ -163,14 +154,25 @@ public:
 
             std::pair<bool, YoloCloudObject> ret = yoloCloud.addObject(bbox, cv_ptr->image, depthI, camToMap);
             if (!ret.second.invalid()) {
-                detectionPositions.emplace_back(detection, ret.second.position);
+                detectionPositions.emplace_back(detection, ret.second);
             }
 
             // If object was added to yolocloud, add to knowledge base
             bool newObj = ret.first;
             if (newObj) {
+                std::cout << "New Object " << ret.second.position << std::endl;
                 add_to_ltmc(ret.second);
             }
+        }
+
+        // If the robot is moving then don't update Octomap
+        if (Eigen::Vector3f(odom->twist.twist.linear.x,
+                            odom->twist.twist.linear.y,
+                            odom->twist.twist.linear.z).norm() > 0.05 ||
+            Eigen::Vector3f(odom->twist.twist.angular.x,
+                            odom->twist.twist.angular.y,
+                            odom->twist.twist.angular.z).norm() > 0.05) {
+            return;
         }
 
         // Use depthMasked to construct a ROI Point Cloud for use with Octomap
@@ -188,21 +190,21 @@ public:
 
         // Bounding box
         for (const auto &d : detectionPositions) {
-            octomap::point3d point = d.second;
+            octomap::point3d point(d.second.position(0), d.second.position(1), d.second.position(2));
             cv::Rect bbox = d.first.bbox;
-            visualization_msgs::Marker box = yoloCloud.extractBoundingBox(point, bbox, camToMap, ir_intrinsics);
+            visualization_msgs::Marker box = OctreeUtils::extractBoundingBox(octree, point, bbox, camToMap, ir_intrinsics);
 
             // Invalid box
             if (box.header.frame_id.empty()) {
                 continue;
             }
 
-            auto key = yoloCloud.octree.coordToKey(point);
+            int key = d.second.id;
             auto mit = bounding_boxes.find(key);
             if (mit != bounding_boxes.end()) {
                 bounding_boxes.at(key) = box;
             } else {
-                bounding_boxes.insert({yoloCloud.octree.coordToKey(point), box});
+                bounding_boxes.insert({key, box});
             }
 
         }
@@ -248,7 +250,7 @@ public:
         auto entity = concept.create_instance();
         auto sensed = ltmc.get_concept("sensed");
         entity.make_instance_of(sensed);
-        entity_id_to_points.insert({entity.entity_id, object.position});
+        entity_id_to_object.insert({entity.entity_id, object});
     }
 
 
@@ -257,17 +259,17 @@ public:
         for (int eid : req.entity_ids) {
             geometry_msgs::Point p;
             // Requested an ID that's not in the cloud. Return NANs
-            if (entity_id_to_points.count(eid) == 0) {
+            if (entity_id_to_object.count(eid) == 0) {
                 knowledge_rep::Entity entity = {eid, ltmc};
                 entity.remove_attribute("sensed");
                 p.x = NAN;
                 p.y = NAN;
                 p.z = NAN;
             } else {
-                octomap::point3d point = entity_id_to_points.at(eid);
-                p.x = point.x();
-                p.y = point.y();
-                p.z = point.z();
+                Eigen::Vector3f point = entity_id_to_object.at(eid).position;
+                p.x = point(0);
+                p.y = point(1);
+                p.z = point(2);
             }
 
             map_locations.push_back(p);
@@ -280,13 +282,13 @@ public:
 
 
     bool get_bounding_boxes(villa_yolocloud::GetBoundingBoxes::Request &req, villa_yolocloud::GetBoundingBoxes::Response &res) {
-        octomap::point3d min(req.min.x, req.min.y, req.min.z);
-        octomap::point3d max(req.max.x, req.max.y, req.max.z);
+        Eigen::Vector3f min(req.min.x, req.min.y, req.min.z);
+        Eigen::Vector3f max(req.max.x, req.max.y, req.max.z);
         std::vector<YoloCloudObject> objects = yoloCloud.searchBox(min, max);
 
         visualization_msgs::MarkerArray boxes;
         for (const auto &object : objects) {
-            auto mit = bounding_boxes.find(yoloCloud.octree.coordToKey(object.position));
+            auto mit = bounding_boxes.find(object.id);
 
             if (mit != bounding_boxes.end()) {
                 boxes.markers.push_back(mit->second);
