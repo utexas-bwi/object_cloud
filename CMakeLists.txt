@@ -102,13 +102,14 @@ if(USE_GPU)
   )
 endif()
 
-add_executable(yolocloud_node src/yolocloud_node.cpp src/YoloCloud.cpp src/YoloModel.cpp src/PointCloudConstructor.cpp include/villa_yolocloud/PointCloudConstructor.h)
+add_executable(yolocloud_node src/yolocloud_node.cpp src/YoloCloud.cpp src/YoloModel.cpp src/OctreeUtils.cpp src/PointCloudConstructor.cpp include/villa_yolocloud/PointCloudConstructor.h)
 add_dependencies(yolocloud_node ${villa_yolocloud_EXPORTED_TARGETS})
 target_link_libraries(yolocloud_node
-        ${catkin_LIBRARIES}
-        ${OpenCV_LIBRARIES}
-        ${PCL_LIBRARIES}
-        ${OCTOMAP_LIBRARIES}
+    ${catkin_LIBRARIES}
+    ${OpenCV_LIBRARIES}
+    ${PCL_LIBRARIES}
+    ${OCTOMAP_LIBRARIES}
+    nanoflann
 )
 
 install(PROGRAMS
