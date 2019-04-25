@@ -306,7 +306,7 @@ public:
             visualization_msgs::Marker marker;
             marker.header.frame_id = "map";
             marker.ns = object.label;
-            marker.id = id;
+            marker.id = id++;
             marker.type = 1;
             marker.action = 0;
             marker.pose.position.x = object.position.x();

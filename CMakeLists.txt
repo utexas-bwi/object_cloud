@@ -84,6 +84,9 @@ catkin_package(
     DEPENDS message_runtime
 )
 
+# nanoflann
+add_subdirectory("3rdparty/nanoflann" EXCLUDE_FROM_ALL)
+
 include_directories(
     include
     ${catkin_INCLUDE_DIRS}
