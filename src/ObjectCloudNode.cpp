@@ -34,7 +34,7 @@ ObjectCloudNode::ObjectCloudNode(ros::NodeHandle node)
       tf_listener(tf_buffer),
       it(node),
       octree(0.01),
-      ltmc(knowledge_rep::get_default_ltmc()) {
+      ltmc(knowledge_rep::getDefaultLTMC()) {
 
 #ifdef VISUALIZE
   viz_detections_pub = it.advertise("/object_cloud/detections", 1);
@@ -46,14 +46,14 @@ ObjectCloudNode::ObjectCloudNode(ros::NodeHandle node)
 #endif
 
   // NOTE: We assume there's only one ObjectCloud, so this will blow away anything that is sensed
-  ltmc.get_concept("sensed").remove_instances();
-  ltmc.get_concept("scanned").remove_references();
+  ltmc.getConcept("sensed").removeInstances();
+  ltmc.getConcept("scanned").removeReferences();
 
 }
 
 ObjectCloudNode::~ObjectCloudNode() {
-  ltmc.get_concept("sensed").remove_instances();
-  ltmc.get_concept("scanned").remove_references();
+  ltmc.getConcept("sensed").removeInstances();
+  ltmc.getConcept("scanned").removeReferences();
 }
 
 void ObjectCloudNode::advertise_services() {
@@ -70,10 +70,10 @@ void ObjectCloudNode::advertise_services() {
 }
 
 void ObjectCloudNode::add_to_ltmc(const Object &object) {
-  auto concept = ltmc.get_concept(object.label);
-  auto entity = concept.create_instance();
-  auto sensed = ltmc.get_concept("sensed");
-  entity.make_instance_of(sensed);
+  auto concept = ltmc.getConcept(object.label);
+  auto entity = concept.createInstance();
+  auto sensed = ltmc.getConcept("sensed");
+  entity.makeInstanceOf(sensed);
   entity_id_to_object.insert({entity.entity_id, object});
 }
 
@@ -86,7 +86,7 @@ ObjectCloudNode::get_entities(villa_object_cloud::GetEntities::Request &req, vil
     // Requested an ID that's not in the cloud. Return NANs
     if (entity_id_to_object.count(eid) == 0) {
       knowledge_rep::Entity entity = {eid, ltmc};
-      entity.remove_attribute("sensed");
+      entity.removeAttribute("sensed");
       p.x = NAN;
       p.y = NAN;
       p.z = NAN;
