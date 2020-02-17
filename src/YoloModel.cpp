@@ -1,4 +1,4 @@
-#include "villa_yolocloud/YoloModel.h"
+#include "villa_object_cloud/YoloModel.h"
 #include <fstream>
 
 using namespace cv;

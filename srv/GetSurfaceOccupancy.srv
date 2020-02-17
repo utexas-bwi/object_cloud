@@ -1,0 +1,9 @@
+# xmin and xmax
+float32[] x_bounds
+# ymin and ymax
+float32[] y_bounds
+
+visualization_msgs/Marker surface
+---
+# Intervals by start and end, i.e. [a1, a2, b1, b2, c1, c2, ...]
+float32[] intervals

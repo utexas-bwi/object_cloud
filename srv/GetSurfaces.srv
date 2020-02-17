@@ -1,0 +1,20 @@
+# +- distance in the y axis to check for surfaces
+float32 view_horizon
+
+# X and Y scale relative to head_pan_link
+float32[] x_scales
+float32[] y_scales
+float32[] z_scales
+
+# Z at which each surface is located
+# Negative number for anywhere
+float32[] z_values
+
+# Tolerance for whether a surface is at the Z specified
+float32 z_eps
+
+# Surfaces are defined as being horizontal to the ground
+# You can specify rigid body motions for different setups (e.g. 90 deg rot about X for a vertical surface)
+geometry_msgs/Transform[] transforms
+---
+visualization_msgs/MarkerArray surfaces

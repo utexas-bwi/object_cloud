@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0)
-project(villa_yolocloud)
+project(villa_object_cloud)
 
 set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_C_FLAGS_RELEASE "-Ofast -DNDEBUG")
@@ -49,6 +49,7 @@ find_package(catkin REQUIRED COMPONENTS
     tf2_eigen
     image_transport
     octomap_ros
+    object_msgs
     knowledge_representation
     villa_darknet
 )
@@ -61,13 +62,18 @@ find_package(octomap REQUIRED)
 add_message_files(
     FILES
     DetectedObject.msg
-    DetectedObjectArray.msg
+    SearchBox.msg
+    BoundingBox2D.msg
+    BoundingBox2DList.msg
 )
 
 add_service_files(
     FILES
     GetEntities.srv
     GetBoundingBoxes.srv
+    GetObjects.srv
+    GetSurfaces.srv
+    GetSurfaceOccupancy.srv
 )
 
 generate_messages(
@@ -102,9 +108,19 @@ if(USE_GPU)
   )
 endif()
 
-add_executable(yolocloud_node src/yolocloud_node.cpp src/YoloCloud.cpp src/YoloModel.cpp src/OctreeUtils.cpp src/PointCloudConstructor.cpp include/villa_yolocloud/PointCloudConstructor.h)
-add_dependencies(yolocloud_node ${villa_yolocloud_EXPORTED_TARGETS})
+add_executable(yolocloud_node src/yolocloud_node.cpp src/ObjectCloud.cpp src/YoloModel.cpp src/PointCloudUtils.cpp src/PointCloudConstructor.cpp src/YoloCloudNode.cpp src/ObjectCloudNode.cpp)
+add_dependencies(yolocloud_node ${villa_object_cloud_EXPORTED_TARGETS})
 target_link_libraries(yolocloud_node
+    ${catkin_LIBRARIES}
+    ${OpenCV_LIBRARIES}
+    ${PCL_LIBRARIES}
+    ${OCTOMAP_LIBRARIES}
+    nanoflann
+)
+
+add_executable(ground_truth_cloud_node src/ground_truth_cloud_node.cpp src/ObjectCloud.cpp src/PointCloudUtils.cpp src/PointCloudConstructor.cpp src/GroundTruthObjectCloudNode.cpp src/ObjectCloudNode.cpp)
+add_dependencies(ground_truth_cloud_node ${villa_object_cloud_EXPORTED_TARGETS})
+target_link_libraries(ground_truth_cloud_node
     ${catkin_LIBRARIES}
     ${OpenCV_LIBRARIES}
     ${PCL_LIBRARIES}
