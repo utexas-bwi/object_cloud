@@ -209,7 +209,7 @@ bool ObjectCloudNode::get_surfaces(villa_object_cloud::GetSurfaces::Request &req
   cloudReq->cam_to_target = camToStraightCam;
   point_cloud_requests.push(cloudReq);
 
-  std::cout << "WAITING" << std::endl;
+  std::cout << "WAITING FOR POINT CLOUD" << std::endl;
   // Wait for point cloud
   std::unique_lock<std::mutex> lock(cloudReq->mutex);
   cloudReq->cond_var.wait(lock, [cloudReq] { return cloudReq->result != nullptr; });

@@ -81,8 +81,8 @@ void YoloCloudNode::data_callback(const sensor_msgs::Image::ConstPtr &rgb_image,
     Eigen::Matrix3f ir_intrinsics;
     ir_intrinsics << 535.2900990271, 0, 320.0, 0, 535.2900990271, 240.0, 0, 0, 1;
     float inf = std::numeric_limits<float>::infinity();
-  while (!point_cloud_requests.empty()) {
-    std::shared_ptr<PointCloudRequest> req = point_cloud_requests.pop();
+    while (!point_cloud_requests.empty()) {
+        std::shared_ptr<PointCloudRequest> req = point_cloud_requests.pop();
         std::cout << "PROCESSING" << std::endl;
         {
             std::lock_guard<std::mutex> lock(req->mutex);
@@ -133,7 +133,7 @@ void YoloCloudNode::data_callback(const sensor_msgs::Image::ConstPtr &rgb_image,
     // This will be useful for constructing a region-of-interest Point Cloud
     cv::Mat depthMasked = cv::Mat::zeros(depth_image->height, depth_image->width, CV_16UC1);
 
-  std::vector<std::pair<Detection, Object>> detectionPositions;
+    std::vector<std::pair<Detection, Object>> detectionPositions;
     for (const auto &detection : dets) {
         ImageBoundingBox bbox;
         bbox.x = detection.bbox.x;
