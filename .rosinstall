@@ -1,0 +1,6 @@
+- git:
+    local-name: gazebo-pkgs
+    uri: https://github.com/JenniferBuehler/gazebo-pkgs
+- git:
+    local-name: general-message-pkgs
+    uri: https://github.com/JenniferBuehler/general-message-pkgs

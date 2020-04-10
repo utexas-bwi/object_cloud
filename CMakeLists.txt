@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0)
-project(villa_object_cloud)
+project(object_cloud)
 
 set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_C_FLAGS_RELEASE "-Ofast -DNDEBUG")
@@ -35,6 +35,7 @@ endif()
 
 find_package(catkin REQUIRED COMPONENTS
     roscpp
+    roslint
     pcl_ros
     pcl_conversions
     std_msgs
@@ -49,9 +50,8 @@ find_package(catkin REQUIRED COMPONENTS
     tf2_eigen
     image_transport
     octomap_ros
-    object_msgs
+
     knowledge_representation
-    villa_darknet
 )
 
 find_package(Eigen3 REQUIRED)
@@ -108,18 +108,12 @@ if(USE_GPU)
   )
 endif()
 
-add_executable(yolocloud_node src/yolocloud_node.cpp src/ObjectCloud.cpp src/YoloModel.cpp src/PointCloudUtils.cpp src/PointCloudConstructor.cpp src/YoloCloudNode.cpp src/ObjectCloudNode.cpp)
-add_dependencies(yolocloud_node ${villa_object_cloud_EXPORTED_TARGETS})
-target_link_libraries(yolocloud_node
-    ${catkin_LIBRARIES}
-    ${OpenCV_LIBRARIES}
-    ${PCL_LIBRARIES}
-    ${OCTOMAP_LIBRARIES}
-    nanoflann
-)
 
+find_package(object_msgs)
+if (object_msgs_FOUND)
+include_directories(${object_msgs_INCLUDE_DIRS})
 add_executable(ground_truth_cloud_node src/ground_truth_cloud_node.cpp src/ObjectCloud.cpp src/PointCloudUtils.cpp src/PointCloudConstructor.cpp src/GroundTruthObjectCloudNode.cpp src/ObjectCloudNode.cpp)
-add_dependencies(ground_truth_cloud_node ${villa_object_cloud_EXPORTED_TARGETS})
+add_dependencies(ground_truth_cloud_node ${object_cloud_EXPORTED_TARGETS})
 target_link_libraries(ground_truth_cloud_node
     ${catkin_LIBRARIES}
     ${OpenCV_LIBRARIES}
@@ -127,6 +121,7 @@ target_link_libraries(ground_truth_cloud_node
     ${OCTOMAP_LIBRARIES}
     nanoflann
 )
+endif()
 
 install(PROGRAMS
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
@@ -136,3 +131,13 @@ install(DIRECTORY include/${PROJECT_NAME}/
     DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
     FILES_MATCHING PATTERN "*.h")
 
+
+file(GLOB_RECURSE ${PROJECT_NAME}_CPP_SRC
+        RELATIVE ${PROJECT_SOURCE_DIR} src/lib${PROJECT_NAME}/*.cpp src/${PROJECT_NAME}/*.h include/${PROJECT_NAME}/*.h test/*.cpp)
+set(ROSLINT_CPP_OPTS "--filter=-legal/copyright,-build/header_guard,-runtime/references,-build/c++11,-whitespace/braces")
+roslint_cpp(${${PROJECT_NAME}_CPP_SRC})
+
+
+set(ROSLINT_PYTHON_OPTS "--max-line-length=120")
+roslint_python(${${PROJECT_NAME}_PY_SCRIPTS})
+roslint_python(${${PROJECT_NAME}_PY_SRC})
