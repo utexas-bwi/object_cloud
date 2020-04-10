@@ -1,0 +1,24 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  industrial_ci:
+    env:
+      AFTER_SCRIPT: 'cd $target_ws && rosenv && catkin build --no-deps --no-status --verbose --make-args roslint'
+      CATKIN_LINT: true
+      CLANG_FORMAT_VERSION: 3.9
+      PARALLEL_TESTS: false
+      ROS_REPO: main
+    strategy:
+      matrix:
+        env:
+          - {ROS_DISTRO: kinetic}
+          - {ROS_DISTRO: melodic}
+          - {ROS_DISTRO: melodic, GITHUB_LABEL: clang-format, CLANG_FORMAT_CHECK: file, AFTER_SCRIPT: ""}
+          - {ROS_DISTRO: melodic, GITHUB_LABEL: clang-tidy, CLANG_TIDY: true, NOT_TEST_BUILD: true, CATKIN_LINT: false, AFTER_SCRIPT: ""}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: 'ros-industrial/industrial_ci@master'
+        env: ${{matrix.env}}
