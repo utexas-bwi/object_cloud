@@ -10,6 +10,7 @@ jobs:
       CLANG_FORMAT_VERSION: 3.9
       PARALLEL_TESTS: false
       ROS_REPO: main
+      UPSTREAM_WORKSPACE: .rosinstall
     strategy:
       matrix:
         env:
