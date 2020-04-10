@@ -1,22 +1,22 @@
 #pragma once
 
-#include <mutex>
 #include <condition_variable>
-#include <unordered_map>
-#include <std_srvs/Empty.h>
-#include <tf2_ros/transform_listener.h>
-#include <tf2_eigen/tf2_eigen.h>
-#include <object_cloud/ObjectCloud.h>
+#include <knowledge_representation/LongTermMemoryConduit.h>
+#include <mutex>
 #include <object_cloud/BlockingQueue.h>
 #include <object_cloud/DetectedObject.h>
-#include <object_cloud/GetEntities.h>
 #include <object_cloud/GetBoundingBoxes.h>
+#include <object_cloud/GetEntities.h>
 #include <object_cloud/GetObjects.h>
-#include <object_cloud/GetSurfaces.h>
 #include <object_cloud/GetSurfaceOccupancy.h>
-#include <knowledge_representation/LongTermMemoryConduit.h>
-#include <pcl_ros/point_cloud.h>
+#include <object_cloud/GetSurfaces.h>
+#include <object_cloud/ObjectCloud.h>
 #include <pcl/point_types.h>
+#include <pcl_ros/point_cloud.h>
+#include <std_srvs/Empty.h>
+#include <tf2_eigen/tf2_eigen.h>
+#include <tf2_ros/transform_listener.h>
+#include <unordered_map>
 
 #define VISUALIZE 1
 #define VISUALIZE_OCTREE 1
@@ -42,7 +42,7 @@ protected:
   ObjectCloud object_cloud;
 
   // Locks
-  std::mutex global_mutex;  // Global lock
+  std::mutex global_mutex; // Global lock
 
   // Octomap
   octomap::OcTree octree;
@@ -91,11 +91,14 @@ public:
 
   void add_to_ltmc(const Object &object);
 
-  bool clear_octree(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
+  bool clear_octree(std_srvs::Empty::Request &req,
+                    std_srvs::Empty::Response &res);
 
-  bool get_entities(object_cloud::GetEntities::Request &req, object_cloud::GetEntities::Response &res);
+  bool get_entities(object_cloud::GetEntities::Request &req,
+                    object_cloud::GetEntities::Response &res);
 
-  bool get_objects(object_cloud::GetObjects::Request &req, object_cloud::GetObjects::Response &res);
+  bool get_objects(object_cloud::GetObjects::Request &req,
+                   object_cloud::GetObjects::Response &res);
 
   bool get_bounding_boxes(object_cloud::GetBoundingBoxes::Request &req,
                           object_cloud::GetBoundingBoxes::Response &res);
