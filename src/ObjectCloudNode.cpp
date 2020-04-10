@@ -15,10 +15,10 @@
 #include <knowledge_representation/LTMCConcept.h>
 #include <knowledge_representation/LTMCEntity.h>
 #include <knowledge_representation/LTMCInstance.h>
-#include <villa_object_cloud/PointCloudConstructor.h>
-#include <villa_object_cloud/PointCloudUtils.h>
-#include <villa_object_cloud/ObjectCloudNode.h>
-#include <villa_object_cloud/BoundingBox2DList.h>
+#include <object_cloud/PointCloudConstructor.h>
+#include <object_cloud/PointCloudUtils.h>
+#include <object_cloud/ObjectCloudNode.h>
+#include <object_cloud/BoundingBox2DList.h>
 #include <octomap_msgs/Octomap.h>
 #include <octomap_msgs/conversions.h>
 #include <octomap_ros/conversions.h>
@@ -79,7 +79,7 @@ void ObjectCloudNode::add_to_ltmc(const Object &object) {
 
 
 bool
-ObjectCloudNode::get_entities(villa_object_cloud::GetEntities::Request &req, villa_object_cloud::GetEntities::Response &res) {
+ObjectCloudNode::get_entities(object_cloud::GetEntities::Request &req, object_cloud::GetEntities::Response &res) {
   std::vector<geometry_msgs::Point> map_locations;
   for (int eid : req.entity_ids) {
     geometry_msgs::Point p;
@@ -114,7 +114,7 @@ bool ObjectCloudNode::clear_octree(std_srvs::Empty::Request &req, std_srvs::Empt
 }
 
 bool
-ObjectCloudNode::get_objects(villa_object_cloud::GetObjects::Request &req, villa_object_cloud::GetObjects::Response &res) {
+ObjectCloudNode::get_objects(object_cloud::GetObjects::Request &req, object_cloud::GetObjects::Response &res) {
   geometry_msgs::TransformStamped frameToMapTransform;
   try {
     frameToMapTransform = tf_buffer.lookupTransform("map", req.search_box.header.frame_id,
@@ -130,7 +130,7 @@ ObjectCloudNode::get_objects(villa_object_cloud::GetObjects::Request &req, villa
   std::vector<Object> objects = object_cloud.search_box(origin, scale, frameToMap);
 
   for (const auto &object : objects) {
-    villa_object_cloud::DetectedObject obj;
+    object_cloud::DetectedObject obj;
     obj.header.frame_id = "map";
     obj.x = object.position(0);
     obj.y = object.position(1);
@@ -143,8 +143,8 @@ ObjectCloudNode::get_objects(villa_object_cloud::GetObjects::Request &req, villa
   return true;
 }
 
-bool ObjectCloudNode::get_bounding_boxes(villa_object_cloud::GetBoundingBoxes::Request &req,
-                                         villa_object_cloud::GetBoundingBoxes::Response &res) {
+bool ObjectCloudNode::get_bounding_boxes(object_cloud::GetBoundingBoxes::Request &req,
+                                         object_cloud::GetBoundingBoxes::Response &res) {
   geometry_msgs::TransformStamped frameToMapTransform;
   try {
     frameToMapTransform = tf_buffer.lookupTransform("map", req.search_box.header.frame_id,
@@ -175,8 +175,8 @@ bool ObjectCloudNode::get_bounding_boxes(villa_object_cloud::GetBoundingBoxes::R
 }
 
 
-bool ObjectCloudNode::get_surfaces(villa_object_cloud::GetSurfaces::Request &req,
-                                   villa_object_cloud::GetSurfaces::Response &res) {
+bool ObjectCloudNode::get_surfaces(object_cloud::GetSurfaces::Request &req,
+                                   object_cloud::GetSurfaces::Response &res) {
   // Get transforms
   geometry_msgs::TransformStamped camToMapTransform;
   geometry_msgs::TransformStamped camToBaseTransform;
@@ -305,8 +305,8 @@ bool ObjectCloudNode::get_surfaces(villa_object_cloud::GetSurfaces::Request &req
 }
 
 
-bool ObjectCloudNode::get_surface_occupancy(villa_object_cloud::GetSurfaceOccupancy::Request &req,
-                                            villa_object_cloud::GetSurfaceOccupancy::Response &res) {
+bool ObjectCloudNode::get_surface_occupancy(object_cloud::GetSurfaceOccupancy::Request &req,
+                                            object_cloud::GetSurfaceOccupancy::Response &res) {
   // Get all bounding boxes
   std::vector<visualization_msgs::Marker> objects;
   std::transform(bounding_boxes.begin(), bounding_boxes.end(),

@@ -1,1 +1,1 @@
-villa_object_cloud/BoundingBox2D[] bbox_list
+BoundingBox2D[] bbox_list

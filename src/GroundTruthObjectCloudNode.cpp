@@ -18,10 +18,10 @@
 #include <knowledge_representation/LTMCConcept.h>
 #include <knowledge_representation/LTMCEntity.h>
 #include <knowledge_representation/LTMCInstance.h>
-#include <villa_object_cloud/PointCloudConstructor.h>
-#include <villa_object_cloud/PointCloudUtils.h>
-#include <villa_object_cloud/GroundTruthObjectCloudNode.h>
-#include <villa_object_cloud/BoundingBox2DList.h>
+#include <object_cloud/PointCloudConstructor.h>
+#include <object_cloud/PointCloudUtils.h>
+#include <object_cloud/GroundTruthObjectCloudNode.h>
+#include <object_cloud/BoundingBox2DList.h>
 #include <octomap_msgs/Octomap.h>
 #include <octomap_msgs/conversions.h>
 #include <octomap_ros/conversions.h>
@@ -32,7 +32,7 @@
 #include <gazebo_msgs/GetWorldProperties.h>
 #include <gazebo_msgs/GetModelProperties.h>
 #include <gazebo_msgs/GetModelState.h>
-#include "villa_object_cloud/ObjectCloud.h"
+#include "object_cloud/ObjectCloud.h"
 
 typedef pcl::PointXYZ PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;

@@ -7,7 +7,7 @@
 #include <image_transport/image_transport.h>
 #include <image_transport/subscriber_filter.h>
 
-#include <villa_object_cloud/GroundTruthObjectCloudNode.h>
+#include <object_cloud/GroundTruthObjectCloudNode.h>
 
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
         sensor_msgs::Image,
