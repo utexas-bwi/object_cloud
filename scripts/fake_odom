@@ -1,0 +1,25 @@
+#!/usr/bin/env python
+"""
+Publishes static odometry information to make it easier to run demo code with only a fixed camera
+"""
+import rospy
+from geometry_msgs.msg import Quaternion
+from nav_msgs.msg import Odometry
+
+rospy.init_node("fake_odom")
+odom_pub = rospy.Publisher("/odom", Odometry, queue_size=1)
+rate = rospy.Rate(30)
+while not rospy.is_shutdown():
+    odom = Odometry()
+    odom.header.stamp = rospy.Time.now()
+    odom.pose.pose.position.x = 0
+    odom.pose.pose.position.y = 0
+    odom.pose.pose.position.z = 0
+    odom_quat = Quaternion()
+    odom_quat.x = 0
+    odom_quat.y = 0
+    odom_quat.z = 0
+    odom_quat.w = 1
+    odom.pose.pose.orientation = odom_quat
+    odom_pub.publish(odom)
+    rate.sleep()

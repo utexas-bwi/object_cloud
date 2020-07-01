@@ -12,6 +12,7 @@
 
   <buildtool_depend>catkin</buildtool_depend>
 
+  <depend>cv_bridge</depend>
   <depend>roscpp</depend>
   <depend>octomap_ros</depend>
   <depend>pcl_ros</depend>

@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<launch>
+
+
+  <node pkg="object_cloud" type="color_blob_cloud_node" name="color_blob_cloud_node" output="screen">
+    <remap from="/rgb/image" to="/camera/color/image_raw"/>
+    <remap from="/depth/image" to="/camera/depth/image_rect_raw" />
+  </node>
+  <node pkg="object_cloud" type="fake_odom" name="fake_odom"/>
+  <node pkg="tf2_ros" type="static_transform_publisher" name="map_to_camera_broadcaster" args="1 0 0 0 0 0 1 map camera_link" />
+</launch>

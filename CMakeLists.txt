@@ -88,6 +88,7 @@ generate_messages(
 catkin_package(
     INCLUDE_DIRS include
     DEPENDS message_runtime
+    LIBRARIES object_cloud
 )
 
 # nanoflann
@@ -101,6 +102,20 @@ include_directories(
     ${OCTOMAP_INCLUDE_DIRS}
 )
 
+add_library(object_cloud src/ObjectCloud.cpp src/ObjectCloudNode.cpp src/PointCloudConstructor.cpp src/PointCloudUtils.cpp)
+add_dependencies(object_cloud ${object_cloud_EXPORTED_TARGETS})
+target_link_libraries(object_cloud         ${catkin_LIBRARIES}
+        ${OpenCV_LIBRARIES}
+        ${PCL_LIBRARIES}
+        ${OCTOMAP_LIBRARIES}
+        nanoflann)
+
+add_executable(color_blob_cloud_node src/color_blob_cloud_node.cpp src/ColorBlobCloudNode.cpp)
+add_dependencies(color_blob_cloud_node ${object_cloud_EXPORTED_TARGETS})
+target_link_libraries(color_blob_cloud_node
+        object_cloud
+        )
+
 if(USE_GPU)
   include_directories(
     SYSTEM ${CUDA_INCLUDE_DIRS}
@@ -111,16 +126,12 @@ endif()
 
 find_package(object_msgs)
 if (object_msgs_FOUND)
-include_directories(${object_msgs_INCLUDE_DIRS})
-add_executable(ground_truth_cloud_node src/ground_truth_cloud_node.cpp src/ObjectCloud.cpp src/PointCloudUtils.cpp src/PointCloudConstructor.cpp src/GroundTruthObjectCloudNode.cpp src/ObjectCloudNode.cpp)
-add_dependencies(ground_truth_cloud_node ${object_cloud_EXPORTED_TARGETS})
-target_link_libraries(ground_truth_cloud_node
-    ${catkin_LIBRARIES}
-    ${OpenCV_LIBRARIES}
-    ${PCL_LIBRARIES}
-    ${OCTOMAP_LIBRARIES}
-    nanoflann
-)
+  include_directories(${object_msgs_INCLUDE_DIRS})
+  add_executable(ground_truth_cloud_node src/ground_truth_cloud_node.cpp src/GroundTruthObjectCloudNode.cpp)
+  add_dependencies(ground_truth_cloud_node ${object_cloud_EXPORTED_TARGETS})
+  target_link_libraries(ground_truth_cloud_node
+    object_cloud
+  )
 endif()
 
 install(PROGRAMS
