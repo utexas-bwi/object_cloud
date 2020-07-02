@@ -34,24 +34,24 @@ if(USE_GPU)
 endif()
 
 find_package(catkin REQUIRED COMPONENTS
-    roscpp
-    roslint
-    pcl_ros
-    pcl_conversions
-    std_msgs
-    sensor_msgs
+    cv_bridge
     geometry_msgs
-    visualization_msgs
-    std_srvs
+    image_transport
+    knowledge_representation
     message_generation
     message_filters
-    cv_bridge
+    message_runtime
+    octomap_ros
+    pcl_ros
+    pcl_conversions
+    roscpp
+    roslint
+    sensor_msgs
+    std_msgs
+    std_srvs
     tf2
     tf2_eigen
-    image_transport
-    octomap_ros
-
-    knowledge_representation
+    visualization_msgs
 )
 
 find_package(Eigen3 REQUIRED)
@@ -87,7 +87,8 @@ generate_messages(
 
 catkin_package(
     INCLUDE_DIRS include
-    DEPENDS message_runtime
+    DEPENDS
+    CATKIN_DEPENDS geometry_msgs message_runtime sensor_msgs std_msgs std_srvs visualization_msgs
     LIBRARIES object_cloud
 )
 
@@ -134,14 +135,22 @@ if (object_msgs_FOUND)
   )
 endif()
 
+### INSTALL
+
 install(PROGRAMS
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
+
+install(TARGETS object_cloud color_blob_cloud_node
+        ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+        LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+        RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION})
 
 install(DIRECTORY include/${PROJECT_NAME}/
     DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
     FILES_MATCHING PATTERN "*.h")
 
+### LINT
 
 file(GLOB_RECURSE ${PROJECT_NAME}_CPP_SRC
         RELATIVE ${PROJECT_SOURCE_DIR} src/lib${PROJECT_NAME}/*.cpp src/${PROJECT_NAME}/*.h include/${PROJECT_NAME}/*.h test/*.cpp)
