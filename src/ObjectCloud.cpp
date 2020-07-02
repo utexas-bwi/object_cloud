@@ -1,15 +1,13 @@
 #include <object_cloud/ObjectCloud.h>
-#include <pcl/features/moment_of_inertia_estimation.h>
-#include <pcl/filters/extract_indices.h>
-#include <pcl/kdtree/kdtree.h>
 #include <pcl/point_types.h>
-#include <pcl/segmentation/extract_clusters.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <pcl_ros/point_cloud.h>
 
 using namespace cv;
 using namespace nanoflann;
-using namespace std;
+using std::abs;
+using std::make_pair;
+using std::pair;
+using std::vector;
 
 const float NEIGHBOR_THRESH_X = 0.2;
 const float NEIGHBOR_THRESH_Y = 0.2;
@@ -19,10 +17,10 @@ const float NEIGHBOR_THRESH_Z = 0.3;
  * Adds object
  * Returns (new object?, 3D point)
  */
-pair<bool, Object> ObjectCloud::add_object(const ImageBoundingBox &bbox,
-                                           const Mat &rgb_image,
-                                           const Mat &depth_image,
-                                           const Eigen::Affine3f &cam_to_map) {
+pair<bool, Object> ObjectCloud::addObject(const ImageBoundingBox &bbox,
+                                          const Mat &rgb_image,
+                                          const Mat &depth_image,
+                                          const Eigen::Affine3f &cam_to_map) {
   if (bbox.y + bbox.height > rgb_image.rows ||
       bbox.x + bbox.width > rgb_image.cols) {
     // std::cout << bbox.x << std::endl;
@@ -43,6 +41,11 @@ pair<bool, Object> ObjectCloud::add_object(const ImageBoundingBox &bbox,
   if (depth == 0 || isnan(depth)) {
     return make_pair(false, Object());
   }
+
+  float intrinsic_cx = this->camera_intrinsics(0, 2);
+  float intrinsic_cy = this->camera_intrinsics(1, 2);
+  float intrinsic_sx = this->camera_intrinsics(0, 0);
+  float intrinsic_sy = this->camera_intrinsics(1, 1);
 
   // Compute 3d point in the world
   float x_center = bbox.x + bbox.width / 2.;
@@ -68,9 +71,9 @@ pair<bool, Object> ObjectCloud::add_object(const ImageBoundingBox &bbox,
 
     for (const auto &e : indices_dists) {
       PointCloud::Point &p = cloud.pts[e.first];
-      if (std::abs(candidatePoint[0] - p.x) <= NEIGHBOR_THRESH_X &&
-          std::abs(candidatePoint[1] - p.y) <= NEIGHBOR_THRESH_Y &&
-          std::abs(candidatePoint[2] - p.z) <= NEIGHBOR_THRESH_Z) {
+      if (abs(candidatePoint[0] - p.x) <= NEIGHBOR_THRESH_X &&
+          abs(candidatePoint[1] - p.y) <= NEIGHBOR_THRESH_Y &&
+          abs(candidatePoint[2] - p.z) <= NEIGHBOR_THRESH_Z) {
 
         // Same label?
         auto mit = objects_data.find(p.id);
@@ -91,14 +94,14 @@ pair<bool, Object> ObjectCloud::add_object(const ImageBoundingBox &bbox,
   object.id = cloud.pts[idx].id;
   objects_data.insert({cloud.pts[idx].id, object});
 
-  return std::make_pair(true, object);
+  return make_pair(true, object);
 }
 
 /*
  * Adds ground truth object
  * Returns (new object?, 3D point)
  */
-pair<bool, Object> ObjectCloud::add_object(Object &object) {
+pair<bool, Object> ObjectCloud::addObject(Object &object) {
 
   float candidatePoint[3] = {object.position(0), object.position(1),
                              object.position(2)};
@@ -138,7 +141,7 @@ pair<bool, Object> ObjectCloud::add_object(Object &object) {
   return std::make_pair(true, object);
 }
 
-vector<Object> ObjectCloud::get_all_objects() {
+vector<Object> ObjectCloud::getAllObjects() {
   vector<Object> objects;
   objects.reserve(objects_data.size());
 
@@ -149,9 +152,9 @@ vector<Object> ObjectCloud::get_all_objects() {
   return objects;
 }
 
-vector<Object> ObjectCloud::search_box(const Eigen::Vector3f &origin,
-                                       const Eigen::Vector3f &scale,
-                                       const Eigen::Affine3f &box_to_map) {
+vector<Object> ObjectCloud::searchBox(const Eigen::Vector3f &origin,
+                                      const Eigen::Vector3f &scale,
+                                      const Eigen::Affine3f &box_to_map) {
   vector<Object> objects;
 
   Eigen::Vector3f min(origin(0) - scale(0), origin(1) - scale(1),

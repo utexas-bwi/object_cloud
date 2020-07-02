@@ -37,8 +37,8 @@
 typedef pcl::PointXYZ PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
 
-GroundTruthObjectCloudNode::GroundTruthObjectCloudNode(ros::NodeHandle node)
-    : ObjectCloudNode(node) {
+GroundTruthObjectCloudNode::GroundTruthObjectCloudNode(ros::NodeHandle node, const Eigen::Matrix3f& camera_intrinsics)
+    : ObjectCloudNode(node, camera_intrinsics) {
   get_models_client = node.serviceClient<gazebo_msgs::GetWorldProperties>(
       "/gazebo/get_world_properties");
   get_properties_client = node.serviceClient<gazebo_msgs::GetModelProperties>(
@@ -54,7 +54,7 @@ GroundTruthObjectCloudNode::GroundTruthObjectCloudNode(ros::NodeHandle node)
   get_object_info_client.waitForExistence();
 }
 
-void GroundTruthObjectCloudNode::data_callback(
+void GroundTruthObjectCloudNode::dataCallback(
     const sensor_msgs::Image::ConstPtr &rgb_image,
     const sensor_msgs::Image::ConstPtr &depth_image,
     const nav_msgs::Odometry::ConstPtr &odom) {
@@ -83,8 +83,7 @@ void GroundTruthObjectCloudNode::data_callback(
   memcpy(depthI.data, depth_image->data.data(), depth_image->data.size());
 
   // Process point cloud requests
-  Eigen::Matrix3f ir_intrinsics;
-  ir_intrinsics << 535.2900990271, 0, 320.0, 0, 535.2900990271, 240.0, 0, 0, 1;
+
   float inf = std::numeric_limits<float>::infinity();
   while (!point_cloud_requests.empty()) {
     std::shared_ptr<PointCloudRequest> req = point_cloud_requests.pop();
@@ -93,7 +92,7 @@ void GroundTruthObjectCloudNode::data_callback(
       std::lock_guard<std::mutex> lock(req->mutex);
 
       octomap::Pointcloud planecloud = PointCloudConstructor::construct(
-          ir_intrinsics, depthI, req->cam_to_target, inf, req->xbounds,
+          camera_intrinsics, depthI, req->cam_to_target, inf, req->xbounds,
           req->ybounds, req->zbounds);
       pcl::PointCloud<pcl::PointXYZ>::Ptr req_cloud(
           new pcl::PointCloud<pcl::PointXYZ>);
@@ -134,13 +133,13 @@ void GroundTruthObjectCloudNode::data_callback(
       Object object;
       object.position = Eigen::Vector3f(position.x, position.y, position.z);
       object.label = name;
-      std::pair<bool, Object> ret = object_cloud.add_object(object);
+      std::pair<bool, Object> ret = object_cloud.addObject(object);
 
       // If object was added to object_cloud, add to knowledge base
       bool newObj = ret.first;
       if (newObj) {
         std::cout << "New Object " << ret.second.position << std::endl;
-        add_to_ltmc(ret.second);
+        addToLtmc(ret.second);
       }
 
       // Bounding boxes
@@ -195,7 +194,7 @@ void GroundTruthObjectCloudNode::data_callback(
     // Without this, Octomap takes forever
     Eigen::Vector2f nobounds(-inf, inf);
     octomap::Pointcloud cloud = PointCloudConstructor::construct(
-        ir_intrinsics, depthMasked, camToMap, 3., nobounds, nobounds,
+        camera_intrinsics, depthMasked, camToMap, 3., nobounds, nobounds,
         Eigen::Vector2f(0., inf));
 
     // Insert ROI PointCloud into Octree
@@ -240,5 +239,5 @@ void GroundTruthObjectCloudNode::data_callback(
 }
 
 // TODO
-void GroundTruthObjectCloudNode::hand_camera_callback(
+void GroundTruthObjectCloudNode::handCameraCallback(
     const sensor_msgs::Image::ConstPtr &rgb_image) {}

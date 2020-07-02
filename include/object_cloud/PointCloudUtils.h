@@ -17,8 +17,8 @@ class PointCloudUtils {
 public:
   static visualization_msgs::Marker extractBoundingBox(
       const octomap::OcTree &octree, const octomap::point3d &point,
-      const cv::Rect &yolobbox, const Eigen::Affine3f &camToMap,
-      const Eigen::Affine3f &baseToMap, const Eigen::Matrix3f &ir_intrinsics);
+      const cv::Rect &bbox, const Eigen::Affine3f &cam_to_map,
+      const Eigen::Affine3f &base_to_map, const Eigen::Matrix3f &depth_intrinsics);
 
   static boost::optional<visualization_msgs::Marker>
   extractSurface(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,

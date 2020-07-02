@@ -29,21 +29,21 @@
 typedef pcl::PointXYZ PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
 
-ObjectCloudNode::ObjectCloudNode(ros::NodeHandle node)
-    : node(node), tf_listener(tf_buffer), it(node), octree(0.01),
-      ltmc(knowledge_rep::getDefaultLTMC()) {
+ObjectCloudNode::ObjectCloudNode(ros::NodeHandle node, const Eigen::Matrix3f& camera_intrinsics)
+    : node(node), pnh("~"), camera_intrinsics(camera_intrinsics), tf_listener(tf_buffer), it(pnh), octree(0.01),
+      ltmc(knowledge_rep::getDefaultLTMC()), object_cloud(camera_intrinsics) {
 
 #ifdef VISUALIZE
-  viz_detections_pub = it.advertise("/object_cloud/detections", 1);
-  viz_pub = node.advertise<visualization_msgs::MarkerArray>(
-      "/object_cloud/markers", 1, true);
-  cloud_pub = node.advertise<octomap_msgs::Octomap>("/object_cloud/cloud", 1);
+  viz_detections_pub = it.advertise("detections", 1);
+  viz_pub = pnh.advertise<visualization_msgs::MarkerArray>(
+      "markers", 1, true);
+  cloud_pub = pnh.advertise<octomap_msgs::Octomap>("cloud", 1);
   surfacecloud_pub =
-      node.advertise<PointCloudT>("/object_cloud/surfacecloud", 1);
-  surface_marker_pub = node.advertise<visualization_msgs::MarkerArray>(
-      "/object_cloud/surfacemarker", 1);
+      pnh.advertise<PointCloudT>("surfacecloud", 1);
+  surface_marker_pub = pnh.advertise<visualization_msgs::MarkerArray>(
+      "surfacemarker", 1);
   bbox_pub =
-      node.advertise<visualization_msgs::MarkerArray>("/object_cloud/box", 1);
+      pnh.advertise<visualization_msgs::MarkerArray>("box", 1);
 #endif
 
   // NOTE: We assume there's only one ObjectCloud, so this will blow away
@@ -57,26 +57,24 @@ ObjectCloudNode::~ObjectCloudNode() {
   ltmc.getConcept("scanned").removeReferences();
 }
 
-void ObjectCloudNode::advertise_services() {
-  // TODO: Switch to standard service naming convention:
-  // http://wiki.ros.org/ROS/Patterns/Conventions#Topics_.2BAC8_services
-  clear_octree_server = node.advertiseService(
-      "/object_cloud/clear_octree", &ObjectCloudNode::clear_octree, this);
-  get_entities_server = node.advertiseService(
-      "/object_cloud/get_entities", &ObjectCloudNode::get_entities, this);
+void ObjectCloudNode::advertiseServices() {
+  clear_octree_server = pnh.advertiseService(
+      "clear_octree", &ObjectCloudNode::clearOctree, this);
+  get_entities_server = pnh.advertiseService(
+      "get_entities", &ObjectCloudNode::getEntities, this);
   get_bounding_boxes_server =
-      node.advertiseService("/object_cloud/get_bounding_boxes",
-                            &ObjectCloudNode::get_bounding_boxes, this);
-  get_objects_server = node.advertiseService(
-      "/object_cloud/get_objects", &ObjectCloudNode::get_objects, this);
-  get_surface_server = node.advertiseService(
-      "/object_cloud/get_surfaces", &ObjectCloudNode::get_surfaces, this);
+      pnh.advertiseService("get_bounding_boxes",
+                           &ObjectCloudNode::getBoundingBoxes, this);
+  get_objects_server = pnh.advertiseService(
+      "get_objects", &ObjectCloudNode::getObjects, this);
+  get_surface_server = pnh.advertiseService(
+      "get_surfaces", &ObjectCloudNode::getSurfaces, this);
   surface_occupancy_server =
-      node.advertiseService("/object_cloud/get_surface_occupancy",
-                            &ObjectCloudNode::get_surface_occupancy, this);
+      pnh.advertiseService("get_surface_occupancy",
+                           &ObjectCloudNode::getSurfaceOccupancy, this);
 }
 
-void ObjectCloudNode::add_to_ltmc(const Object &object) {
+void ObjectCloudNode::addToLtmc(const Object &object) {
   auto concept = ltmc.getConcept(object.label);
   auto entity = concept.createInstance();
   auto sensed = ltmc.getConcept("sensed");
@@ -84,14 +82,14 @@ void ObjectCloudNode::add_to_ltmc(const Object &object) {
   entity_id_to_object.insert({entity.entity_id, object});
 }
 
-bool ObjectCloudNode::get_entities(object_cloud::GetEntities::Request &req,
-                                   object_cloud::GetEntities::Response &res) {
+bool ObjectCloudNode::getEntities(object_cloud::GetEntities::Request &req,
+                                  object_cloud::GetEntities::Response &res) {
   std::vector<geometry_msgs::Point> map_locations;
   for (int eid : req.entity_ids) {
     geometry_msgs::Point p;
     // Requested an ID that's not in the cloud. Return NANs
     if (entity_id_to_object.count(eid) == 0) {
-      knowledge_rep::Entity entity = {eid, ltmc};
+      knowledge_rep::Entity entity = {static_cast<uint>(eid), ltmc};
       entity.removeAttribute("sensed");
       p.x = NAN;
       p.y = NAN;
@@ -111,8 +109,8 @@ bool ObjectCloudNode::get_entities(object_cloud::GetEntities::Request &req,
   return true;
 }
 
-bool ObjectCloudNode::clear_octree(std_srvs::Empty::Request &req,
-                                   std_srvs::Empty::Response &res) {
+bool ObjectCloudNode::clearOctree(std_srvs::Empty::Request &req,
+                                  std_srvs::Empty::Response &res) {
   std::lock_guard<std::mutex> lock(global_mutex);
 
   octree.clear();
@@ -120,8 +118,8 @@ bool ObjectCloudNode::clear_octree(std_srvs::Empty::Request &req,
   return true;
 }
 
-bool ObjectCloudNode::get_objects(object_cloud::GetObjects::Request &req,
-                                  object_cloud::GetObjects::Response &res) {
+bool ObjectCloudNode::getObjects(object_cloud::GetObjects::Request &req,
+                                 object_cloud::GetObjects::Response &res) {
   geometry_msgs::TransformStamped frameToMapTransform;
   try {
     frameToMapTransform = tf_buffer.lookupTransform(
@@ -139,7 +137,7 @@ bool ObjectCloudNode::get_objects(object_cloud::GetObjects::Request &req,
                         req.search_box.scale.z);
 
   std::vector<Object> objects =
-      object_cloud.search_box(origin, scale, frameToMap);
+      object_cloud.searchBox(origin, scale, frameToMap);
 
   for (const auto &object : objects) {
     object_cloud::DetectedObject obj;
@@ -155,7 +153,7 @@ bool ObjectCloudNode::get_objects(object_cloud::GetObjects::Request &req,
   return true;
 }
 
-bool ObjectCloudNode::get_bounding_boxes(
+bool ObjectCloudNode::getBoundingBoxes(
     object_cloud::GetBoundingBoxes::Request &req,
     object_cloud::GetBoundingBoxes::Response &res) {
   geometry_msgs::TransformStamped frameToMapTransform;
@@ -175,7 +173,7 @@ bool ObjectCloudNode::get_bounding_boxes(
                         req.search_box.scale.z);
 
   std::vector<Object> objects =
-      object_cloud.search_box(origin, scale, frameToMap);
+      object_cloud.searchBox(origin, scale, frameToMap);
 
   visualization_msgs::MarkerArray boxes;
   for (const auto &object : objects) {
@@ -192,8 +190,8 @@ bool ObjectCloudNode::get_bounding_boxes(
   return true;
 }
 
-bool ObjectCloudNode::get_surfaces(object_cloud::GetSurfaces::Request &req,
-                                   object_cloud::GetSurfaces::Response &res) {
+bool ObjectCloudNode::getSurfaces(object_cloud::GetSurfaces::Request &req,
+                                  object_cloud::GetSurfaces::Response &res) {
   // Get transforms
   geometry_msgs::TransformStamped camToMapTransform;
   geometry_msgs::TransformStamped camToBaseTransform;
@@ -332,7 +330,7 @@ bool ObjectCloudNode::get_surfaces(object_cloud::GetSurfaces::Request &req,
   return true;
 }
 
-bool ObjectCloudNode::get_surface_occupancy(
+bool ObjectCloudNode::getSurfaceOccupancy(
     object_cloud::GetSurfaceOccupancy::Request &req,
     object_cloud::GetSurfaceOccupancy::Response &res) {
   // Get all bounding boxes
@@ -360,7 +358,7 @@ bool ObjectCloudNode::get_surface_occupancy(
 void ObjectCloudNode::visualize() {
   visualization_msgs::MarkerArray marker_array;
   int id = 0;
-  for (const auto &object : object_cloud.get_all_objects()) {
+  for (const auto &object : object_cloud.getAllObjects()) {
     visualization_msgs::Marker marker;
     marker.header.frame_id = "map";
     marker.ns = object.label;

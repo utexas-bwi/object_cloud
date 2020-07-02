@@ -18,7 +18,9 @@ int main(int argc, char **argv) {
   ros::init(argc, argv, "ground_truth_cloud_node");
   ros::NodeHandle n("~");
 
-  GroundTruthObjectCloudNode gtc_node(n);
+  Eigen::Matrix3f camera_intrinsics;
+  camera_intrinsics << 535.2900990271, 0, 320.0, 0, 535.2900990271, 240.0, 0, 0, 1;
+  GroundTruthObjectCloudNode gtc_node(n, camera_intrinsics);
 
   // RGBD Subscriber
   image_transport::SubscriberFilter image_sub(
@@ -30,13 +32,13 @@ int main(int argc, char **argv) {
   message_filters::Subscriber<nav_msgs::Odometry> odom_sub(n, "/hsrb/odom", 30);
   message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(30), image_sub,
                                                  depth_sub, odom_sub);
-  sync.registerCallback(boost::bind(&GroundTruthObjectCloudNode::data_callback,
+  sync.registerCallback(boost::bind(&GroundTruthObjectCloudNode::dataCallback,
                                     &gtc_node, _1, _2, _3));
 
   // Head Subscriber
   image_transport::Subscriber hand_sub = gtc_node.it.subscribe(
       "/hsrb/hand_camera/image_raw", 30,
-      boost::bind(&GroundTruthObjectCloudNode::hand_camera_callback, &gtc_node,
+      boost::bind(&GroundTruthObjectCloudNode::handCameraCallback, &gtc_node,
                   _1));
 
   ROS_INFO("Started. Waiting for inputs.");
@@ -44,7 +46,7 @@ int main(int argc, char **argv) {
     ROS_WARN_THROTTLE(2, "Waiting for image and depth messages...");
     ros::spinOnce();
   }
-  gtc_node.advertise_services();
+  gtc_node.advertiseServices();
 
   // This way we can have one callback thread and one service thread
   ros::MultiThreadedSpinner spinner(3);

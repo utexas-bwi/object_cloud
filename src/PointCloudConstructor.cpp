@@ -1,9 +1,6 @@
 #include <object_cloud/PointCloudConstructor.h>
-
-#include <cmath>
-#include <opencv2/calib3d.hpp>
 #include <opencv2/core/eigen.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
+
 
 using namespace cv;
 using namespace Eigen;

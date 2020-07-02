@@ -8,7 +8,6 @@
 #include <pcl/features/moment_of_inertia_estimation.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/filters/extract_indices.h>
-#include <pcl/filters/extract_indices.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/kdtree/kdtree.h>
 #include <pcl/sample_consensus/impl/ransac.hpp>
@@ -32,13 +31,26 @@ typedef pcl::PointXYZ PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
 
 using namespace cv;
-using namespace std;
+using std::abs;
+using std::vector;
+using pcl::PointCloud;
+using pcl::PointXYZ;
 
+/**
+ * @brief Attempts to pull an oriented bounding box for a cluster of points that lies in bounding box region out of an octomap
+ * @param octree
+ * @param point
+ * @param bbox
+ * @param cam_to_map
+ * @param base_to_map
+ * @param depth_intrinsics
+ * @return
+ */
 visualization_msgs::Marker PointCloudUtils::extractBoundingBox(
     const octomap::OcTree &octree, const octomap::point3d &point,
-    const cv::Rect &yolobbox, const Eigen::Affine3f &camToMap,
-    const Eigen::Affine3f &baseToMap, const Eigen::Matrix3f &ir_intrinsics) {
-  // This gets the min and max of the rough bounding box to look for object
+    const cv::Rect &bbox, const Eigen::Affine3f &cam_to_map,
+    const Eigen::Affine3f &base_to_map, const Eigen::Matrix3f &depth_intrinsics) {
+  // Gets the min and max of the rough bounding box to look for object
   // points
   // The min and max is cutoff by the true min and max of our Octomap
   double min_bb_x;
@@ -58,10 +70,9 @@ visualization_msgs::Marker PointCloudUtils::extractBoundingBox(
   octomap::point3d min(min_bb_x, min_bb_y, min_bb_z);
   octomap::point3d max(max_bb_x, max_bb_y, max_bb_z);
 
-  // Octomap stores free space, so just focus on occupied cells within our rough
-  // bounding box
-  std::vector<Eigen::Vector3f> pts;
-  float minZ = std::numeric_limits<float>::max();
+  // Octomap stores free space, so just focus on occupied cells within our rough bounding box
+  vector<Eigen::Vector3f> pts;
+  float min_z = std::numeric_limits<float>::max();
   for (octomap::OcTree::leaf_bbx_iterator
            iter = octree.begin_leafs_bbx(min, max),
            end = octree.end_leafs_bbx();
@@ -69,66 +80,62 @@ visualization_msgs::Marker PointCloudUtils::extractBoundingBox(
     if (iter->getOccupancy() >= octree.getOccupancyThres()) {
       pts.emplace_back(iter.getCoordinate().x(), iter.getCoordinate().y(),
                        iter.getCoordinate().z());
-      minZ = std::min(minZ, iter.getCoordinate().z());
+      min_z = std::min(min_z, iter.getCoordinate().z());
     }
   }
 
   // Filter out z's that are too low (e.g. if part of the table is captured)
-  std::vector<Eigen::Vector3f> ptsZFiltered;
+  std::vector<Eigen::Vector3f> pts_filtered;
   for (const auto &pt : pts) {
-    if (pt(2) > minZ + 0.045) {
-      ptsZFiltered.push_back(pt);
+    if (pt(2) > min_z + 0.045) {
+      pts_filtered.push_back(pt);
     }
   }
-  pts = ptsZFiltered;
+  pts = pts_filtered;
 
-  // Prepare batch of points to check if in YOLO bounding box
-  Eigen::Matrix<float, 3, Eigen::Dynamic> candidatePoints(3, pts.size());
+  // Prepare batch of points to check if in bounding box
+  Eigen::Matrix<float, 3, Eigen::Dynamic> map_points(3, pts.size());
   for (int i = 0; i < pts.size(); ++i) {
-    candidatePoints.col(i) = pts[i];
+    map_points.col(i) = pts[i];
   }
 
   // Project batch
-  Eigen::Affine3f mapToCam = camToMap.inverse();
-  Eigen::Matrix<float, 3, Eigen::Dynamic> imagePoints =
-      ir_intrinsics * mapToCam * candidatePoints;
-  imagePoints.array().rowwise() /= imagePoints.row(2).array();
+  Eigen::Affine3f map_to_cam = cam_to_map.inverse();
+  Eigen::Matrix<float, 3, Eigen::Dynamic> image_points = depth_intrinsics * map_to_cam * map_points;
+  image_points.array().rowwise() /= image_points.row(2).array();
 
-  // Construct PCL Point Cloud with subset of points that project into YOLO
-  // bounding box
-  pcl::PointCloud<pcl::PointXYZ>::Ptr objectCloud(
-      new pcl::PointCloud<pcl::PointXYZ>);
+  // Construct PCL Point Cloud with subset of points that project into bounding box
+  PointCloud<PointXYZ>::Ptr object_cloud(new PointCloud<PointXYZ>);
   for (int i = 0; i < pts.size(); ++i) {
-    float x = imagePoints(0, i);
-    float y = imagePoints(1, i);
+    float x = image_points(0, i);
+    float y = image_points(1, i);
 
-    int x_b = yolobbox.x;
-    int y_b = yolobbox.y;
+    int x_b = bbox.x;
+    int y_b = bbox.y;
 
-    // Within YOLO Box
-    if (x_b <= x && x < x_b + yolobbox.width && y_b <= y &&
-        y < y_b + yolobbox.height) {
-      objectCloud->points.emplace_back(pts[i](0), pts[i](1), pts[i](2));
+    // Within bbox
+    if (x_b <= x && x < x_b + bbox.width && y_b <= y &&
+        y < y_b + bbox.height) {
+      object_cloud->points.emplace_back(pts[i](0), pts[i](1), pts[i](2));
     }
   }
 
-  if (objectCloud->points.empty()) {
+  if (object_cloud->points.empty()) {
     return visualization_msgs::Marker();
   }
 
   // Use Euclidean clustering to filter out noise like objects that are behind
   // our object
-  pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(
-      new pcl::search::KdTree<pcl::PointXYZ>);
-  tree->setInputCloud(objectCloud);
+  pcl::search::KdTree<PointXYZ>::Ptr tree(new pcl::search::KdTree<PointXYZ>);
+  tree->setInputCloud(object_cloud);
 
-  std::vector<pcl::PointIndices> cluster_indices;
-  pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
+  vector<pcl::PointIndices> cluster_indices;
+  pcl::EuclideanClusterExtraction<PointXYZ> ec;
   ec.setClusterTolerance(0.02); // 2cm
   ec.setMinClusterSize(50);
   ec.setMaxClusterSize(25000);
   ec.setSearchMethod(tree);
-  ec.setInputCloud(objectCloud);
+  ec.setInputCloud(object_cloud);
   ec.extract(cluster_indices);
 
   if (cluster_indices.empty()) {
@@ -136,40 +143,29 @@ visualization_msgs::Marker PointCloudUtils::extractBoundingBox(
   }
 
   // Pick Closest Cluster
-  Eigen::Affine3f mapToBase = baseToMap.inverse();
-  float closest_dist = numeric_limits<float>::max();
+  Eigen::Affine3f map_to_base = base_to_map.inverse();
+  float closest_dist = std::numeric_limits<float>::max();
   int closest_cluster_idx = 0;
   for (int cluster_idx = 0; cluster_idx < cluster_indices.size();
        cluster_idx++) {
     // Extract centroid
-    pcl::CentroidPoint<pcl::PointXYZ> centroid;
-    for (int i : cluster_indices[cluster_idx].indices) {
-      centroid.add(objectCloud->points[i]);
-    }
-    pcl::PointXYZ c;
-    centroid.get(c);
+    Eigen::Vector4f c;
+    pcl::compute3DCentroid(*object_cloud, cluster_indices[cluster_idx].indices, c);
 
-    Eigen::Vector3f baseCentroid = mapToBase * Eigen::Vector3f(c.x, c.y, c.z);
-    float distance = Eigen::Vector2f(baseCentroid(0), baseCentroid(1)).norm();
+    Eigen::Vector3f base_centroid = map_to_base * Eigen::Vector3f(c[0], c[1], c[2]);
+    float distance = Eigen::Vector2f(base_centroid(0), base_centroid(1)).norm();
     if (distance < closest_dist) {
       closest_dist = distance;
       closest_cluster_idx = cluster_idx;
     }
   }
 
-  const pcl::PointIndices &max_cluster = cluster_indices[closest_cluster_idx];
-
-  pcl::PointCloud<pcl::PointXYZ>::Ptr clusteredCloud(
-      new pcl::PointCloud<pcl::PointXYZ>);
-  for (std::vector<int>::const_iterator pit = max_cluster.indices.begin();
-       pit != max_cluster.indices.end(); ++pit) {
-    pcl::PointXYZ pt = objectCloud->points[*pit];
-    clusteredCloud->points.push_back(pt);
-  }
+  const pcl::PointIndicesConstPtr max_cluster = boost::make_shared<pcl::PointIndices>(cluster_indices[closest_cluster_idx]);
 
   // The following gets and computes the oriented bounding box
   pcl::MomentOfInertiaEstimation<pcl::PointXYZ> feature_extractor;
-  feature_extractor.setInputCloud(clusteredCloud);
+  feature_extractor.setIndices(max_cluster);
+  feature_extractor.setInputCloud(object_cloud);
   feature_extractor.compute();
 
   pcl::PointXYZ min_point_OBB;
@@ -194,15 +190,15 @@ visualization_msgs::Marker PointCloudUtils::extractBoundingBox(
   Eigen::Vector3f x = Eigen::Vector3f::UnitX();
   Eigen::Vector3f y = Eigen::Vector3f::UnitY();
   Eigen::Vector3f z = Eigen::Vector3f::UnitZ();
-  float cos_with_x[3] = {std::abs(x.dot(major_vector)),
-                         std::abs(x.dot(middle_vector)),
-                         std::abs(x.dot(minor_vector))};
-  float cos_with_y[3] = {std::abs(y.dot(major_vector)),
-                         std::abs(y.dot(middle_vector)),
-                         std::abs(y.dot(minor_vector))};
-  float cos_with_z[3] = {std::abs(z.dot(major_vector)),
-                         std::abs(z.dot(middle_vector)),
-                         std::abs(z.dot(minor_vector))};
+  float cos_with_x[3] = {abs(x.dot(major_vector)),
+                         abs(x.dot(middle_vector)),
+                         abs(x.dot(minor_vector))};
+  float cos_with_y[3] = {abs(y.dot(major_vector)),
+                         abs(y.dot(middle_vector)),
+                         abs(y.dot(minor_vector))};
+  float cos_with_z[3] = {abs(z.dot(major_vector)),
+                         abs(z.dot(middle_vector)),
+                         abs(z.dot(minor_vector))};
   auto x_idx = std::max_element(cos_with_x, cos_with_x + 3) - cos_with_x;
   auto y_idx = std::max_element(cos_with_y, cos_with_y + 3) - cos_with_y;
   auto z_idx = std::max_element(cos_with_z, cos_with_z + 3) - cos_with_z;
@@ -433,7 +429,7 @@ vector<Eigen::Vector2f> PointCloudUtils::surfaceOccupancy(
   for (const auto &obj : all_objects) {
     // Sanity check, ground should always be the same by default
     if (obj.header.frame_id != surface.header.frame_id) {
-      throw runtime_error("Mismatched ground frames!");
+      throw std::runtime_error("Mismatched ground frames!");
     }
 
     Eigen::Affine3d objToGround;
@@ -445,7 +441,7 @@ vector<Eigen::Vector2f> PointCloudUtils::surfaceOccupancy(
         objToSurface * Eigen::Vector3f(0, 0, -obj.scale.z / 2);
 
     // If this object is on a different surface then ignore
-    if (std::abs(center(2)) > SURFACE_CLOSENESS || center(0) < xbounds(0) ||
+    if (abs(center(2)) > SURFACE_CLOSENESS || center(0) < xbounds(0) ||
         center(0) > xbounds(1) || center(1) < ybounds(0) ||
         center(1) > ybounds(1)) {
       continue;

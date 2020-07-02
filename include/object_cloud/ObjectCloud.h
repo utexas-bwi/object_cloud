@@ -19,6 +19,10 @@ struct ImageBoundingBox {
   int width;
   int height;
   std::string label;
+
+  operator cv::Rect2i() const {
+    return {static_cast<int>(x), static_cast<int>(y), width, height};
+  }
 };
 
 struct Object {
@@ -26,17 +30,11 @@ struct Object {
   std::string label;
   int id;
 
-  bool invalid() { return label.empty(); }
+  bool invalid() const { return label.empty(); }
 };
 
 class ObjectCloud {
 private:
-  // TODO: make these compiletime configurable
-  // Hardcoded intrinsic parameters for the HSR xtion
-  float intrinsic_sx = 535.2900990271;
-  float intrinsic_sy = 535.2900990271;
-  float intrinsic_cx = 320.0000000000;
-  float intrinsic_cy = 240.0000000000;
 
   // Point Cloud definition for nanoflann
   struct PointCloud {
@@ -98,25 +96,26 @@ private:
   // Our object cloud
   PointCloud cloud;
   KDTreeIndex cloud_index;
+  Eigen::Matrix3f camera_intrinsics;
 
   std::unordered_map<int, Object> objects_data;
 
 public:
-  ObjectCloud()
-      : cloud_index(3, cloud, nanoflann::KDTreeSingleIndexAdaptorParams()) {}
+  ObjectCloud(const Eigen::Matrix3f& camera_intrinsics)
+      : cloud_index(3, cloud, nanoflann::KDTreeSingleIndexAdaptorParams()), camera_intrinsics(camera_intrinsics) {}
 
-  std::pair<bool, Object> add_object(const ImageBoundingBox &bbox,
-                                     const cv::Mat &rgb_image,
-                                     const cv::Mat &depth_image,
-                                     const Eigen::Affine3f &cam_to_map);
+  std::pair<bool, Object> addObject(const ImageBoundingBox &bbox,
+                                    const cv::Mat &rgb_image,
+                                    const cv::Mat &depth_image,
+                                    const Eigen::Affine3f &cam_to_map);
 
-  std::pair<bool, Object> add_object(Object &object);
+  std::pair<bool, Object> addObject(Object &object);
 
-  std::vector<Object> get_all_objects();
+  std::vector<Object> getAllObjects();
 
-  std::vector<Object> search_box(const Eigen::Vector3f &origin,
-                                 const Eigen::Vector3f &scale,
-                                 const Eigen::Affine3f &box_to_map);
+  std::vector<Object> searchBox(const Eigen::Vector3f &origin,
+                                const Eigen::Vector3f &scale,
+                                const Eigen::Affine3f &box_to_map);
 
   void clear();
 };
