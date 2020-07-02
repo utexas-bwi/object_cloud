@@ -21,16 +21,14 @@
 #define VISUALIZE 1
 #define VISUALIZE_OCTREE 1
 
-class ColorBlobCloudNode : public ObjectCloudNode {
+class ColorBlobCloudNode : public ObjectCloudNode
+{
 protected:
   cv::Ptr<cv::SimpleBlobDetector> detector;
 
 public:
-  explicit ColorBlobCloudNode(ros::NodeHandle node,
-                              const Eigen::Matrix3f& camera_intrinsics);
+  explicit ColorBlobCloudNode(ros::NodeHandle node, const Eigen::Matrix3f& camera_intrinsics);
 
-  void dataCallback(const sensor_msgs::Image::ConstPtr &rgb_image,
-                    const sensor_msgs::Image::ConstPtr &depth_image,
-                    const nav_msgs::Odometry::ConstPtr &odom);
-
+  void dataCallback(const sensor_msgs::Image::ConstPtr& rgb_image, const sensor_msgs::Image::ConstPtr& depth_image,
+                    const nav_msgs::Odometry::ConstPtr& odom);
 };

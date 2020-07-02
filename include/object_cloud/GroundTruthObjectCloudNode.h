@@ -20,16 +20,15 @@
 #define VISUALIZE 1
 #define VISUALIZE_OCTREE 1
 
-class GroundTruthObjectCloudNode : public ObjectCloudNode {
-
+class GroundTruthObjectCloudNode : public ObjectCloudNode
+{
 public:
   explicit GroundTruthObjectCloudNode(ros::NodeHandle node, const Eigen::Matrix3f& camera_intrinsics);
 
-  void dataCallback(const sensor_msgs::Image::ConstPtr &rgb_image,
-                    const sensor_msgs::Image::ConstPtr &depth_image,
-                    const nav_msgs::Odometry::ConstPtr &odom);
+  void dataCallback(const sensor_msgs::Image::ConstPtr& rgb_image, const sensor_msgs::Image::ConstPtr& depth_image,
+                    const nav_msgs::Odometry::ConstPtr& odom);
 
-  void handCameraCallback(const sensor_msgs::Image::ConstPtr &rgb_image);
+  void handCameraCallback(const sensor_msgs::Image::ConstPtr& rgb_image);
 
 private:
   ros::ServiceClient get_models_client;

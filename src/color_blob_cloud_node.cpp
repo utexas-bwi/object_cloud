@@ -10,13 +10,11 @@
 #include <object_cloud/ColorBlobCloudNode.h>
 #include <sensor_msgs/CameraInfo.h>
 
-typedef message_filters::sync_policies::ApproximateTime<
-    sensor_msgs::Image, sensor_msgs::Image, nav_msgs::Odometry>
+typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image, nav_msgs::Odometry>
     SyncPolicy;
 
-
-
-int main(int argc, char **argv) {
+int main(int argc, char** argv)
+{
   ros::init(argc, argv, "color_blob_cloud_node");
   ros::NodeHandle n("~");
 
@@ -27,19 +25,15 @@ int main(int argc, char **argv) {
 
   ColorBlobCloudNode cbc_node(n, camera_intrinsics);
 
-  image_transport::SubscriberFilter image_sub(
-      cbc_node.it, "/rgb/image", 30);
-  image_transport::SubscriberFilter depth_sub(
-      cbc_node.it, "/depth/image",
-      30);
+  image_transport::SubscriberFilter image_sub(cbc_node.it, "/rgb/image", 30);
+  image_transport::SubscriberFilter depth_sub(cbc_node.it, "/depth/image", 30);
   message_filters::Subscriber<nav_msgs::Odometry> odom_sub(n, "/odom", 30);
-  message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(30), image_sub,
-                                                 depth_sub, odom_sub);
-  sync.registerCallback(boost::bind(&ColorBlobCloudNode::dataCallback,
-                                    &cbc_node, _1, _2, _3));
+  message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(30), image_sub, depth_sub, odom_sub);
+  sync.registerCallback(boost::bind(&ColorBlobCloudNode::dataCallback, &cbc_node, _1, _2, _3));
 
   ROS_INFO("Started. Waiting for inputs.");
-  while (ros::ok() && !cbc_node.received_first_message) {
+  while (ros::ok() && !cbc_node.received_first_message)
+  {
     ROS_WARN_THROTTLE(2, "Waiting for image and depth messages...");
     ros::spinOnce();
   }

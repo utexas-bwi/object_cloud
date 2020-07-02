@@ -21,7 +21,8 @@
 #define VISUALIZE 1
 #define VISUALIZE_OCTREE 1
 
-struct PointCloudRequest {
+struct PointCloudRequest
+{
   Eigen::Affine3f cam_to_target;
   Eigen::Vector2f xbounds;
   Eigen::Vector2f ybounds;
@@ -32,9 +33,9 @@ struct PointCloudRequest {
   pcl::PointCloud<pcl::PointXYZ>::Ptr result = nullptr;
 };
 
-class ObjectCloudNode {
+class ObjectCloudNode
+{
 protected:
-
   Eigen::Matrix3f camera_intrinsics;
 
   // ROS tf2
@@ -53,7 +54,7 @@ protected:
   // Objects data
   std::unordered_map<int, Object> entity_id_to_object;
   std::unordered_map<int, visualization_msgs::Marker> bounding_boxes;
-  knowledge_rep::LongTermMemoryConduit ltmc; // Knowledge base
+  knowledge_rep::LongTermMemoryConduit ltmc;  // Knowledge base
 
   // Point cloud requests
   BlockingQueue<std::shared_ptr<PointCloudRequest>> point_cloud_requests;
@@ -80,7 +81,6 @@ protected:
   ros::ServiceServer get_surface_server;
   ros::ServiceServer surface_occupancy_server;
 
-
   void visualize();
 
 public:
@@ -93,23 +93,18 @@ public:
 
   void advertiseServices();
 
-  void addToLtmc(const Object &object);
+  void addToLtmc(const Object& object);
 
-  bool clearOctree(std_srvs::Empty::Request &req,
-                   std_srvs::Empty::Response &res);
+  bool clearOctree(std_srvs::Empty::Request& req, std_srvs::Empty::Response& res);
 
-  bool getEntities(object_cloud::GetEntities::Request &req,
-                   object_cloud::GetEntities::Response &res);
+  bool getEntities(object_cloud::GetEntities::Request& req, object_cloud::GetEntities::Response& res);
 
-  bool getObjects(object_cloud::GetObjects::Request &req,
-                  object_cloud::GetObjects::Response &res);
+  bool getObjects(object_cloud::GetObjects::Request& req, object_cloud::GetObjects::Response& res);
 
-  bool getBoundingBoxes(object_cloud::GetBoundingBoxes::Request &req,
-                        object_cloud::GetBoundingBoxes::Response &res);
+  bool getBoundingBoxes(object_cloud::GetBoundingBoxes::Request& req, object_cloud::GetBoundingBoxes::Response& res);
 
-  bool getSurfaces(object_cloud::GetSurfaces::Request &req,
-                   object_cloud::GetSurfaces::Response &res);
+  bool getSurfaces(object_cloud::GetSurfaces::Request& req, object_cloud::GetSurfaces::Response& res);
 
-  bool getSurfaceOccupancy(object_cloud::GetSurfaceOccupancy::Request &req,
-                           object_cloud::GetSurfaceOccupancy::Response &res);
+  bool getSurfaceOccupancy(object_cloud::GetSurfaceOccupancy::Request& req,
+                           object_cloud::GetSurfaceOccupancy::Response& res);
 };
