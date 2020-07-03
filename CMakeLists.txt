@@ -92,9 +92,6 @@ catkin_package(
     LIBRARIES object_cloud
 )
 
-# nanoflann
-add_subdirectory("3rdparty/nanoflann" EXCLUDE_FROM_ALL)
-
 include_directories(
     include
     ${catkin_INCLUDE_DIRS}
@@ -108,8 +105,7 @@ add_dependencies(object_cloud ${object_cloud_EXPORTED_TARGETS})
 target_link_libraries(object_cloud         ${catkin_LIBRARIES}
         ${OpenCV_LIBRARIES}
         ${PCL_LIBRARIES}
-        ${OCTOMAP_LIBRARIES}
-        nanoflann)
+        ${OCTOMAP_LIBRARIES})
 
 add_executable(color_blob_cloud_node src/color_blob_cloud_node.cpp src/ColorBlobCloudNode.cpp)
 add_dependencies(color_blob_cloud_node ${object_cloud_EXPORTED_TARGETS})
@@ -118,6 +114,7 @@ target_link_libraries(color_blob_cloud_node
         )
 
 if(USE_GPU)
+  #catkin_lint: skip
   include_directories(
     SYSTEM ${CUDA_INCLUDE_DIRS}
     /usr/local/cuda/targets/x86_64-linux/include

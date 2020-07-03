@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <iostream>
 #include <map>
-#include <nanoflann.hpp>
+#include <object_cloud/3rdparty/nanoflann.hpp>
 #include <octomap/octomap.h>
 #include <opencv/cv.h>
 #include <opencv2/highgui.hpp>

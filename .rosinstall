@@ -1,9 +1,3 @@
 - git:
-    local-name: gazebo-pkgs
-    uri: https://github.com/JenniferBuehler/gazebo-pkgs
-- git:
-    local-name: general-message-pkgs
-    uri: https://github.com/JenniferBuehler/general-message-pkgs
-- git:
     local-name: knowledge_representation
     uri: https://github.com/utexas-bwi/knowledge_representation
