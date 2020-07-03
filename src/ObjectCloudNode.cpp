@@ -1,26 +1,17 @@
-#include <cv_bridge/cv_bridge.h>
 #include <geometry_msgs/Point.h>
-#include <geometry_msgs/PoseArray.h>
-#include <nav_msgs/Odometry.h>
 #include <ros/ros.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
-
 #include <image_transport/image_transport.h>
-#include <image_transport/subscriber_filter.h>
-#include <sensor_msgs/Image.h>
-#include <sensor_msgs/PointCloud2.h>
 
 #include <knowledge_representation/LTMCConcept.h>
 #include <knowledge_representation/LTMCEntity.h>
-#include <knowledge_representation/LTMCInstance.h>
 #include <knowledge_representation/convenience.h>
-#include <object_cloud/BoundingBox2DList.h>
+
 #include <object_cloud/ObjectCloudNode.h>
 #include <object_cloud/PointCloudConstructor.h>
 #include <object_cloud/PointCloudUtils.h>
 #include <octomap_msgs/Octomap.h>
-#include <octomap_msgs/conversions.h>
 #include <octomap_ros/conversions.h>
 #include <opencv/highgui.h>
 #include <pcl/common/transforms.h>

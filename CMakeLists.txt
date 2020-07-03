@@ -144,13 +144,12 @@ install(TARGETS object_cloud color_blob_cloud_node
         RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION})
 
 install(DIRECTORY include/${PROJECT_NAME}/
-    DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-    FILES_MATCHING PATTERN "*.h")
+    DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
 
 ### LINT
 
 file(GLOB_RECURSE ${PROJECT_NAME}_CPP_SRC
-        RELATIVE ${PROJECT_SOURCE_DIR} src/lib${PROJECT_NAME}/*.cpp src/${PROJECT_NAME}/*.h include/${PROJECT_NAME}/*.h test/*.cpp)
+        RELATIVE ${PROJECT_SOURCE_DIR} src/*.cpp  include/${PROJECT_NAME}/*.h test/*.cpp)
 set(ROSLINT_CPP_OPTS "--filter=-legal/copyright,-build/header_guard,-runtime/references,-build/c++11,-whitespace/braces")
 roslint_cpp(${${PROJECT_NAME}_CPP_SRC})
 
