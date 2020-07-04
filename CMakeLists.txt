@@ -1,9 +1,11 @@
 cmake_minimum_required(VERSION 3.0)
 project(object_cloud)
 
-set(CMAKE_BUILD_TYPE Release)
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_C_FLAGS_RELEASE "-Ofast -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -DNDEBUG")
+endif()
 add_compile_options(-std=c++11)
 
 find_package(OpenMP REQUIRED)
@@ -112,15 +114,6 @@ add_dependencies(color_blob_cloud_node ${object_cloud_EXPORTED_TARGETS})
 target_link_libraries(color_blob_cloud_node
         object_cloud
         )
-
-if(USE_GPU)
-  #catkin_lint: skip
-  include_directories(
-    SYSTEM ${CUDA_INCLUDE_DIRS}
-    /usr/local/cuda/targets/x86_64-linux/include
-  )
-endif()
-
 
 find_package(object_msgs)
 if (object_msgs_FOUND)
