@@ -26,9 +26,11 @@ class ColorBlobCloudNode : public ObjectCloudNode
 protected:
   cv::Ptr<cv::SimpleBlobDetector> detector;
 
+  void runDetector(cv_bridge::CvImageConstPtr rgb_image, std::vector<ImageBoundingBox>& bboxes);
+
 public:
   explicit ColorBlobCloudNode(ros::NodeHandle node, const Eigen::Matrix3f& camera_intrinsics);
 
-  void dataCallback(const sensor_msgs::Image::ConstPtr& rgb_image, const sensor_msgs::Image::ConstPtr& depth_image,
+  void dataCallback(const sensor_msgs::Image::ConstPtr& rgb_msg, const sensor_msgs::Image::ConstPtr& depth_msg,
                     const nav_msgs::Odometry::ConstPtr& odom);
 };

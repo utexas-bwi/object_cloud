@@ -102,6 +102,8 @@ include_directories(
     ${OCTOMAP_INCLUDE_DIRS}
 )
 
+# Stops a debug output that fires every time the octree is serialized
+add_compile_definitions(OCTOMAP_NODEBUGOUT)
 add_library(object_cloud src/ObjectCloud.cpp src/ObjectCloudNode.cpp src/PointCloudConstructor.cpp src/PointCloudUtils.cpp)
 add_dependencies(object_cloud ${object_cloud_EXPORTED_TARGETS})
 target_link_libraries(object_cloud         ${catkin_LIBRARIES}

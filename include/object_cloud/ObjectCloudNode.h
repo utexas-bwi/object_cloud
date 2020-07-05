@@ -17,9 +17,35 @@
 #include <tf2_eigen/tf2_eigen.h>
 #include <tf2_ros/transform_listener.h>
 #include <unordered_map>
+#include <sensor_msgs/Image.h>
+#include <cv_bridge/cv_bridge.h>
+#include <Eigen/Geometry>
 
 #define VISUALIZE 1
 #define VISUALIZE_OCTREE 1
+
+static void prepareDepthData(const sensor_msgs::Image::ConstPtr& depth_msg, cv_bridge::CvImagePtr depth)
+{
+  depth->image = cv::Mat(depth_msg->height, depth_msg->width, CV_16UC1);
+  // Taken from depth_image_proc
+  // https://github.com/ros-perception/image_pipeline/blob/melodic/depth_image_proc/src/nodelets/convert_metric.cpp
+  if (depth_msg->encoding == "32FC1")
+  {
+    auto cv_ptr = cv_bridge::toCvShare(depth_msg);
+    uint16_t bad_point = 0;
+    const auto* raw_data = reinterpret_cast<const float*>(&depth_msg->data[0]);
+    auto* depth_data = reinterpret_cast<uint16_t*>(&depth->image.data[0]);
+    for (unsigned index = 0; index < depth_msg->height * depth_msg->width; ++index)
+    {
+      float raw = raw_data[index];
+      depth_data[index] = std::isnan(raw) ? bad_point : (uint16_t)(raw * 1000);
+    }
+  }
+  else
+  {
+    memcpy(depth->image.data, depth_msg->data.data(), depth_msg->data.size());
+  }
+}
 
 struct PointCloudRequest
 {
@@ -63,7 +89,6 @@ protected:
   std::unordered_map<std::string, ros::Publisher> detections_pubs;
 
   ros::NodeHandle node;
-  ros::NodeHandle pnh;
 
 #ifdef VISUALIZE
   image_transport::Publisher viz_detections_pub;
@@ -82,6 +107,13 @@ protected:
   ros::ServiceServer surface_occupancy_server;
 
   void visualize();
+
+  void updateBoundingBoxes(std::vector<std::pair<ImageBoundingBox, Object>> detection_objects,
+                           const Eigen::Affine3f& cam_to_map);
+
+  void processPointCloudRequests(cv_bridge::CvImagePtr depth);
+
+  void runDetector(cv_bridge::CvImageConstPtr rgb_image, std::vector<ImageBoundingBox>& bboxes);
 
 public:
   image_transport::ImageTransport it;

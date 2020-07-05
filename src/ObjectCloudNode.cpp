@@ -16,27 +16,40 @@
 #include <opencv/highgui.h>
 #include <pcl/common/transforms.h>
 #include <pcl/filters/extract_indices.h>
+#include <iostream>
+#include <chrono>
+#include <thread>
+#include <functional>
+#include <octomap_msgs/conversions.h>
 
 typedef pcl::PointXYZ PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
 
 ObjectCloudNode::ObjectCloudNode(ros::NodeHandle node, const Eigen::Matrix3f& camera_intrinsics)
   : node(node)
-  , pnh("~")
   , camera_intrinsics(camera_intrinsics)
   , tf_listener(tf_buffer)
-  , it(pnh)
+  , it(node)
   , octree(0.01)
   , ltmc(knowledge_rep::getDefaultLTMC())
   , object_cloud(camera_intrinsics)
 {
 #ifdef VISUALIZE
   viz_detections_pub = it.advertise("detections", 1);
-  viz_pub = pnh.advertise<visualization_msgs::MarkerArray>("markers", 1, true);
-  cloud_pub = pnh.advertise<octomap_msgs::Octomap>("cloud", 1);
-  surfacecloud_pub = pnh.advertise<PointCloudT>("surfacecloud", 1);
-  surface_marker_pub = pnh.advertise<visualization_msgs::MarkerArray>("surfacemarker", 1);
-  bbox_pub = pnh.advertise<visualization_msgs::MarkerArray>("box", 1);
+  viz_pub = node.advertise<visualization_msgs::MarkerArray>("markers", 1, true);
+  cloud_pub = node.advertise<octomap_msgs::Octomap>("cloud", 1);
+  surfacecloud_pub = node.advertise<PointCloudT>("surfacecloud", 1);
+  surface_marker_pub = node.advertise<visualization_msgs::MarkerArray>("surfacemarker", 1);
+  bbox_pub = node.advertise<visualization_msgs::MarkerArray>("box", 1);
+
+  std::thread([this]() {
+    while (ros::ok())
+    {
+      auto x = std::chrono::steady_clock::now() + std::chrono::milliseconds(10000);
+      this->visualize();
+      std::this_thread::sleep_until(x);
+    }
+  }).detach();
 #endif
 
   // NOTE: We assume there's only one ObjectCloud, so this will blow away
@@ -53,12 +66,13 @@ ObjectCloudNode::~ObjectCloudNode()
 
 void ObjectCloudNode::advertiseServices()
 {
-  clear_octree_server = pnh.advertiseService("clear_octree", &ObjectCloudNode::clearOctree, this);
-  get_entities_server = pnh.advertiseService("get_entities", &ObjectCloudNode::getEntities, this);
-  get_bounding_boxes_server = pnh.advertiseService("get_bounding_boxes", &ObjectCloudNode::getBoundingBoxes, this);
-  get_objects_server = pnh.advertiseService("get_objects", &ObjectCloudNode::getObjects, this);
-  get_surface_server = pnh.advertiseService("get_surfaces", &ObjectCloudNode::getSurfaces, this);
-  surface_occupancy_server = pnh.advertiseService("get_surface_occupancy", &ObjectCloudNode::getSurfaceOccupancy, this);
+  clear_octree_server = node.advertiseService("clear_octree", &ObjectCloudNode::clearOctree, this);
+  get_entities_server = node.advertiseService("get_entities", &ObjectCloudNode::getEntities, this);
+  get_bounding_boxes_server = node.advertiseService("get_bounding_boxes", &ObjectCloudNode::getBoundingBoxes, this);
+  get_objects_server = node.advertiseService("get_objects", &ObjectCloudNode::getObjects, this);
+  get_surface_server = node.advertiseService("get_surfaces", &ObjectCloudNode::getSurfaces, this);
+  surface_occupancy_server =
+      node.advertiseService("get_surface_occupancy", &ObjectCloudNode::getSurfaceOccupancy, this);
 }
 
 void ObjectCloudNode::addToLtmc(const Object& object)
@@ -337,8 +351,32 @@ bool ObjectCloudNode::getSurfaceOccupancy(object_cloud::GetSurfaceOccupancy::Req
 
 void ObjectCloudNode::visualize()
 {
-  visualization_msgs::MarkerArray marker_array;
+  std::lock_guard<std::mutex> lock(global_mutex);
+// This takes time so disable if not debugging...
+#if (VISUALIZE_OCTREE)
+  // Publish Octree
+  if (cloud_pub.getNumSubscribers() > 0)
+  {
+    octomap_msgs::Octomap cloud_msg;
+    cloud_msg.header.frame_id = "map";
+    octomap_msgs::binaryMapToMsg(octree, cloud_msg);
+    cloud_pub.publish(cloud_msg);
+  }
+#endif
+
+  // Publish bounding boxes
+  visualization_msgs::MarkerArray boxes;
   int id = 0;
+  for (const auto& e : bounding_boxes)
+  {
+    visualization_msgs::Marker box = e.second;
+    box.id = id;
+    boxes.markers.push_back(box);
+    id++;
+  }
+  bbox_pub.publish(boxes);
+
+  visualization_msgs::MarkerArray marker_array;
   for (const auto& object : object_cloud.getAllObjects())
   {
     visualization_msgs::Marker marker;
@@ -390,4 +428,60 @@ void ObjectCloudNode::visualize()
     marker_array.markers.push_back(text_marker);
   }
   viz_pub.publish(marker_array);
+}
+
+void ObjectCloudNode::updateBoundingBoxes(std::vector<std::pair<ImageBoundingBox, Object>> detection_objects,
+                                          const Eigen::Affine3f& cam_to_map)
+{
+  // Update bounding boxes
+  for (const auto& d : detection_objects)
+  {
+    octomap::point3d point(d.second.position(0), d.second.position(1), d.second.position(2));
+    visualization_msgs::Marker box =
+        PointCloudUtils::extractBoundingBox(octree, point, d.first, cam_to_map, cam_to_map, camera_intrinsics);
+
+    // Invalid box
+    if (box.header.frame_id.empty())
+    {
+      continue;
+    }
+
+    int key = d.second.id;
+    auto mit = bounding_boxes.find(key);
+    if (mit != bounding_boxes.end())
+    {
+      bounding_boxes.at(key) = box;
+    }
+    else
+    {
+      bounding_boxes.insert({ key, box });
+    }
+  }
+}
+
+void ObjectCloudNode::processPointCloudRequests(cv_bridge::CvImagePtr depth)
+{
+  float inf = std::numeric_limits<float>::infinity();
+  while (!point_cloud_requests.empty())
+  {
+    std::shared_ptr<PointCloudRequest> req = point_cloud_requests.pop();
+    std::cout << "PROCESSING" << std::endl;
+    {
+      std::lock_guard<std::mutex> lock(req->mutex);
+
+      octomap::Pointcloud planecloud = PointCloudConstructor::construct(
+          camera_intrinsics, depth->image, req->cam_to_target, inf, req->xbounds, req->ybounds, req->zbounds);
+      pcl::PointCloud<pcl::PointXYZ>::Ptr req_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+      req_cloud->points.reserve(planecloud.size());
+      for (const auto& p : planecloud)
+      {
+        req_cloud->points.emplace_back(p.x(), p.y(), p.z());
+      }
+      req->result = req_cloud;
+    }
+    std::cout << "PROCESSED" << std::endl;
+
+    req->cond_var.notify_one();
+    std::cout << "NOTIFIED" << std::endl;
+  }
 }
