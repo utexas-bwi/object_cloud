@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.0)
 project(object_cloud)
 
 if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Release)
-set(CMAKE_C_FLAGS_RELEASE "-Ofast -DNDEBUG")
-set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -DNDEBUG")
+ # set(CMAKE_BUILD_TYPE Release)
+ # set(CMAKE_C_FLAGS_RELEASE "-Ofast -DNDEBUG")
+ # set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -DNDEBUG")
 endif()
 add_compile_options(-std=c++11)
 
@@ -102,8 +102,12 @@ include_directories(
     ${OCTOMAP_INCLUDE_DIRS}
 )
 
-# Stops a debug output that fires every time the octree is serialized
-add_compile_definitions(OCTOMAP_NODEBUGOUT)
+# Add compile definitions this way is a recent CMake feature...
+if(${CMAKE_VERSION} VERSION_GREATER "3.12.0")
+  # Stops a debug output that fires every time the octree is serialized
+  add_compile_definitions(OCTOMAP_NODEBUGOUT)
+endif()
+
 add_library(object_cloud src/ObjectCloud.cpp src/ObjectCloudNode.cpp src/PointCloudConstructor.cpp src/PointCloudUtils.cpp)
 add_dependencies(object_cloud ${object_cloud_EXPORTED_TARGETS})
 target_link_libraries(object_cloud         ${catkin_LIBRARIES}
