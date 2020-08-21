@@ -20,6 +20,11 @@
 #include <sensor_msgs/Image.h>
 #include <cv_bridge/cv_bridge.h>
 #include <Eigen/Geometry>
+#include <image_transport/publisher.h>
+#include <image_transport/image_transport.h>
+#include <utility>
+#include <vector>
+#include <string>
 
 #define VISUALIZE 1
 #define VISUALIZE_OCTREE 1

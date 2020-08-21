@@ -90,7 +90,7 @@ generate_messages(
 catkin_package(
     INCLUDE_DIRS include
     DEPENDS
-    CATKIN_DEPENDS geometry_msgs message_runtime sensor_msgs std_msgs std_srvs visualization_msgs
+    CATKIN_DEPENDS geometry_msgs image_transport knowledge_representation message_runtime octomap_ros pcl_ros sensor_msgs std_msgs std_srvs visualization_msgs
     LIBRARIES object_cloud
 )
 

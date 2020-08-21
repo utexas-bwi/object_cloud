@@ -13,19 +13,20 @@
   <buildtool_depend>catkin</buildtool_depend>
 
   <depend>cv_bridge</depend>
-  <depend>roscpp</depend>
+  <depend>geometry_msgs</depend>
+  <depend>image_transport</depend>
+  <depend>knowledge_representation</depend>
+  <depend>message_generation</depend>
+  <depend>message_runtime</depend>
   <depend>octomap_ros</depend>
   <depend>pcl_ros</depend>
   <depend>pcl_conversions</depend>
-  <depend>std_msgs</depend>
+  <depend>roscpp</depend>
   <depend>sensor_msgs</depend>
-  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
   <depend>visualization_msgs</depend>
-  <depend>message_generation</depend>
-  <depend>message_runtime</depend>
-  <depend>knowledge_representation</depend>
 
-  <build_depend>image_transport</build_depend>
+
   <build_depend>octomap</build_depend>
   <build_depend>roslint</build_depend>
   <build_depend>std_srvs</build_depend>
