@@ -12,6 +12,8 @@
 #include <string>
 #include <unordered_map>
 #include <visualization_msgs/Marker.h>
+#include <vector>
+#include <utility>
 
 struct ImageBoundingBox
 {
@@ -117,7 +119,7 @@ private:
   std::unordered_map<int, Object> objects_data;
 
 public:
-  ObjectCloud(const Eigen::Matrix3f& camera_intrinsics)
+  explicit ObjectCloud(const Eigen::Matrix3f& camera_intrinsics)
     : cloud_index(3, cloud, nanoflann::KDTreeSingleIndexAdaptorParams()), camera_intrinsics(camera_intrinsics)
   {
   }

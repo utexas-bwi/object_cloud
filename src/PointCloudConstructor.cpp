@@ -1,8 +1,10 @@
 #include <object_cloud/PointCloudConstructor.h>
 #include <opencv2/core/eigen.hpp>
 
-using namespace cv;
-using namespace Eigen;
+using cv::Mat;
+using Eigen::Matrix3f;
+using Eigen::Matrix;
+using Eigen::Dynamic;
 
 octomap::Pointcloud PointCloudConstructor::construct(const Matrix3f& ir_intrinsics, const Mat& depthImage,
                                                      const Eigen::Affine3f& transform, float maxDist,

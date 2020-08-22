@@ -17,6 +17,7 @@
 #include <std_srvs/Empty.h>
 #include <unordered_map>
 #include <opencv2/features2d.hpp>
+#include <vector>
 
 #define VISUALIZE 1
 #define VISUALIZE_OCTREE 1

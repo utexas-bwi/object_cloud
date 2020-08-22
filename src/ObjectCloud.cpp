@@ -2,8 +2,13 @@
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 
-using namespace cv;
-using namespace nanoflann;
+#include <algorithm>
+#include <utility>
+#include <limits>
+#include <vector>
+
+using cv::Mat;
+using nanoflann::RadiusResultSet;
 using std::abs;
 using std::make_pair;
 using std::pair;

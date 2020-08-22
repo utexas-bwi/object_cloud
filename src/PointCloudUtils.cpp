@@ -1,25 +1,22 @@
 #include <chrono>
 #include <geometry_msgs/PointStamped.h>
-#include <geometry_msgs/PoseArray.h>
 #include <object_cloud/PointCloudUtils.h>
 #include <object_cloud/SACModelEdge.h>
 #include <pcl/common/centroid.h>
 #include <pcl/common/transforms.h>
 #include <pcl/features/moment_of_inertia_estimation.h>
-#include <pcl/features/normal_3d.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/kdtree/kdtree.h>
 #include <pcl/sample_consensus/impl/ransac.hpp>
-#include <pcl/sample_consensus/method_types.h>
 #include <pcl/sample_consensus/model_types.h>
 #include <pcl/sample_consensus/ransac.h>
 #include <pcl/segmentation/extract_clusters.h>
-#include <pcl/segmentation/extract_clusters.h>
-#include <pcl/segmentation/sac_segmentation.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <pcl_ros/point_cloud.h>
 #include <tf2_eigen/tf2_eigen.h>
+#include <algorithm>
+#include <limits>
+#include <vector>
 
 // How much extra height to give to surfaces (as a safety)
 #define SURFACE_EXTRA_Z 0.03
@@ -30,7 +27,7 @@
 typedef pcl::PointXYZ PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
 
-using namespace cv;
+using cv::Mat;
 using std::abs;
 using std::vector;
 using pcl::PointCloud;

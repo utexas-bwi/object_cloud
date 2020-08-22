@@ -12,6 +12,7 @@
 #include <pcl_ros/point_cloud.h>
 #include <string>
 #include <visualization_msgs/Marker.h>
+#include <vector>
 
 class PointCloudUtils
 {

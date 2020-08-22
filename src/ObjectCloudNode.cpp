@@ -19,8 +19,11 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
-#include <functional>
 #include <octomap_msgs/conversions.h>
+#include <limits>
+#include <algorithm>
+#include <vector>
+#include <utility>
 
 typedef pcl::PointXYZ PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;

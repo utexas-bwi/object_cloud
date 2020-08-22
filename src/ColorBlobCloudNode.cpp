@@ -4,21 +4,20 @@
 #include <ros/ros.h>
 #include <tf2_eigen/tf2_eigen.h>
 #include <tf2_ros/transform_listener.h>
-#include <visualization_msgs/Marker.h>
-#include <visualization_msgs/MarkerArray.h>
-
-#include <image_transport/image_transport.h>
 #include <sensor_msgs/Image.h>
 
 #include <knowledge_representation/LTMCConcept.h>
 #include <knowledge_representation/LTMCEntity.h>
 #include <object_cloud/ColorBlobCloudNode.h>
 #include <object_cloud/PointCloudConstructor.h>
-#include <object_cloud/PointCloudUtils.h>
-#include <octomap_msgs/Octomap.h>
+
 #include <octomap_msgs/conversions.h>
 #include <octomap_ros/conversions.h>
 #include <opencv2/features2d.hpp>
+#include <limits>
+#include <utility>
+#include <algorithm>
+#include <vector>
 
 typedef pcl::PointXYZ PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;

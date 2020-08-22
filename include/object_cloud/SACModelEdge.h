@@ -1,6 +1,9 @@
 #pragma once
 
 #include <pcl/sample_consensus/sac_model_line.h>
+#include <limits>
+#include <algorithm>
+#include <vector>
 
 template <typename PointT>
 class SACModelEdge : public pcl::SampleConsensusModelLine<PointT>
@@ -91,7 +94,7 @@ public:
     Eigen::Vector4f line_dir(model_coefficients[3], model_coefficients[4], model_coefficients[5], 0);
     line_dir.normalize();
 
-    // TODO: Assuming z is orthogonal axis to line. Really, we should project
+    // TODO(rishihahs): Assuming z is orthogonal axis to line. Really, we should project
     // this line properly onto the user-provided axis
     float dirs[2] = { std::abs(line_dir(0)), std::abs(line_dir(1)) };
     int min = std::min_element(dirs, dirs + 2) - dirs;
@@ -137,7 +140,7 @@ public:
     Eigen::Vector4f line_dir(model_coefficients[3], model_coefficients[4], model_coefficients[5], 0);
     line_dir.normalize();
 
-    // TODO: Assuming z is orthogonal axis to line. Really, we should project
+    // TODO(rishihahs): Assuming z is orthogonal axis to line. Really, we should project
     // this line properly onto the user-provided axis
     float dirs[2] = { std::abs(line_dir(0)), std::abs(line_dir(1)) };
     int min = std::min_element(dirs, dirs + 2) - dirs;
@@ -206,7 +209,7 @@ protected:
         return (false);
     }
 
-    // TODO: Better line comparison, for now just see if angle between
+    // TODO(rishihahs): Better line comparison, for now just see if angle between
     // directions is close enough
     for (auto& line : invalid_lines_)
     {
@@ -220,7 +223,7 @@ protected:
     // Obtain the line point and direction
     Eigen::Vector3f line_pt(model_coefficients[0], model_coefficients[1], model_coefficients[2]);
 
-    // TODO: Assuming z is orthogonal axis to line. Really, we should project
+    // TODO(rishihahs): Assuming z is orthogonal axis to line. Really, we should project
     // this line properly onto the user-provided axis
     float dirs[2] = { std::abs(line_dir(0)), std::abs(line_dir(1)) };
     int min = std::min_element(dirs, dirs + 2) - dirs;
